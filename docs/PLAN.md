@@ -173,5 +173,7 @@ occasional Claude check-ins.
 - `evidence add` now splits `1.001ms` into value and unit and requires
   `--criterion` for measurements.
 
-Known gaps: rule messages suggest fixed pins ("move to GPIO 25") without
-checking the plan; Pi must be run with stdin closed in headless tests.
+Pin suggestions (2026-11-17): rule messages name free pins computed from
+the whole plan (each candidate tried and rechecked), with a warnings-only
+fallback. New rule C17 (ADC on a pin with no ADC channel) needs review.
+Pi must be run with stdin closed in headless tests.

@@ -9,6 +9,7 @@ pin_sets:
   flash: [6, 7, 8, 9, 10, 11]                # SPI0/1 flash
   psram: [16, 17]                            # C4: module layer decides
   rtc: [0, 2, 4, 12, 13, 14, 15, 25, 26, 27, 32, 33, 34, 35, 36, 37, 38, 39]
+  adc1: [32, 33, 34, 35, 36, 37, 38, 39]
   adc2: [0, 2, 4, 12, 13, 14, 15, 25, 26, 27]
   dac: [25, 26]
   uart0: [1, 3]
@@ -20,18 +21,18 @@ pin_sets:
 rules:
   C1:
     severity: error
-    message: "GPIO {gpio} ({role}): this pin is not bonded out on the ESP32, so it cannot be used. Pick a different GPIO, for example 25."
+    message: "GPIO {gpio} ({role}): this pin is not bonded out on the ESP32, so it cannot be used. {suggest}"
   C2_OUTPUT:
     id: C2
     severity: error
-    message: "GPIO {gpio} ({role}): GPIO 34-39 are input-only, but this pin is set to {mode}. Move the output to a pin such as GPIO 25."
+    message: "GPIO {gpio} ({role}): GPIO 34-39 are input-only, but this pin is set to {mode}. Move it. {suggest}"
   C2_PULL:
     id: C2
     severity: error
-    message: "GPIO {gpio} ({role}): internal pull-up or pull-down requested, but GPIO 34-39 have no pull hardware. Use an external resistor, or move to GPIO 25."
+    message: "GPIO {gpio} ({role}): internal pull-up or pull-down requested, but GPIO 34-39 have no pull hardware. Use an external resistor, or move it. {suggest}"
   C3:
     severity: error
-    message: "GPIO {gpio} ({role}): GPIO 6-11 are wired to the SPI flash and must not be reconfigured. Move to a free GPIO such as 25."
+    message: "GPIO {gpio} ({role}): GPIO 6-11 are wired to the SPI flash and must not be reconfigured. Move it. {suggest}"
   C5:
     severity: warning
     message: "GPIO {gpio} ({role}): strapping pin (default pull-up). If it is low at reset the chip enters download mode instead of booting. Needs hardware-risk approval."
@@ -46,14 +47,17 @@ rules:
     message: "GPIO {gpio} ({role}): strapping pin (default pull-up). If it is low at reset the boot log is silenced. Make sure nothing pulls it low at boot."
   C10:
     severity: error
-    message: "GPIO {gpio} ({role}): this pin is on ADC2, which cannot be used while Wi-Fi is on. Use an ADC1 pin (GPIO 32-39) instead, or turn Wi-Fi off."
+    message: "GPIO {gpio} ({role}): this pin is on ADC2, which cannot be used while Wi-Fi is on. Move it to an ADC1 pin, or turn Wi-Fi off. {suggest}"
   C10_GPIO:
     id: C10
     severity: warning
     message: "GPIO {gpio} ({role}): this pin is on ADC2 and Wi-Fi is on. Plain digital use is fine, but ADC2 readings won't work on it while Wi-Fi runs. Prefer a non-ADC2 pin if it might ever be an analog input."
+  C17:
+    severity: error
+    message: "GPIO {gpio} ({role}): this pin has no ADC channel (ADC1 is GPIO 32-39, ADC2 is 0, 2, 4, 12-15, 25-27). Move it. {suggest}"
   C11:
     severity: error
-    message: "GPIO {gpio} ({role}): interrupts on GPIO 36 and 39 are unreliable {reason} (ESP32 errata GPIO-3.11). Use a different pin for the interrupt, such as GPIO 4."
+    message: "GPIO {gpio} ({role}): interrupts on GPIO 36 and 39 are unreliable {reason} (ESP32 errata GPIO-3.11). Use a different pin for the interrupt. {suggest}"
   C12:
     severity: error
     message: "GPIO {gpio} ({role}): GPIO 1 and 3 are UART0 TX/RX, used by the console and flashing, and the console is on uart0. Pick another pin, or move the console and get the change approved."
@@ -62,13 +66,13 @@ rules:
     message: "GPIO {gpio} ({role}): GPIO 12-15 are JTAG pins and JTAG debugging is enabled. Use another pin, or turn JTAG off."
   C14:
     severity: error
-    message: "GPIO {gpio} ({role}): deep-sleep wake needs an RTC-capable pin (0, 2, 4, 12-15, 25-27, 32-39). Move the wake source to one of those, such as GPIO 4."
+    message: "GPIO {gpio} ({role}): deep-sleep wake needs an RTC-capable pin (0, 2, 4, 12-15, 25-27, 32-39). Move the wake source. {suggest}"
   C15:
     severity: error
-    message: "GPIO {gpio} ({role}): only GPIO 25 and 26 have a DAC. Move the DAC output to one of them."
+    message: "GPIO {gpio} ({role}): only GPIO 25 and 26 have a DAC. {suggest}"
   OWNER:
     severity: error
-    message: "GPIO {gpio}: assigned more than once ({roles}). Each pin can have only one role; move one of them to another pin."
+    message: "GPIO {gpio}: assigned more than once ({roles}). Each pin can have only one role; move one of them. {suggest}"
   OPEN_DRAIN_PULL:
     severity: error
     message: "GPIO {gpio} ({role}): open-drain/I2C line with no pull-up anywhere, so it can never go high. Declare an external pull-up (or external_offboard if it is on the breakout)."

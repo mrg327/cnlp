@@ -188,6 +188,7 @@ These tables are the first real rule files, drafted from Espressif's [ESP-IDF GP
 | C14 | Wake and hold pins | Deep-sleep wake must use RTC GPIOs: 0, 2, 4, 12–15, 25–27, 32–39. Holding digital state in deep sleep needs `gpio_deep_sleep_hold_en()` | Error on a non-RTC wake pin |
 | C15 | 25, 26 | Only DAC-capable pins (DAC0, DAC1) | Error on DAC elsewhere |
 | C16 | All | Never rely on reset-default register values; the bootloader may change them before `app_main` | Codegen always sets every field |
+| C17 | All except ADC1 (32–39) and ADC2 (0, 2, 4, 12–15, 25–27) | An ADC function on a pin with no ADC channel | Error (added 2026-11-17; **needs review**) |
 
 **Module: ESP32-WROOM (3.3 V flash, no PSRAM).**
 
@@ -200,6 +201,8 @@ These tables are the first real rule files, drafted from Espressif's [ESP-IDF GP
 | W5 | 37, 38 | Bonded on the chip but not brought out by the WROOM-32 module | Error (decided 2026-11-17) |
 
 Cross-pin rules: `OWNER` (one pin, two roles: error), `OPEN_DRAIN_PULL` (open-drain or I2C line with no pull: error), `FLOATING` (GPIO or interrupt input with no pull: error), `I2C_WEAK_PULL` (I2C line relying only on the ~45 kΩ internal pull-up: warning, decided 2026-11-17).
+
+Rule messages that tell the user to move a pin name free pins computed from the whole plan: every candidate GPIO is tried in place of the pin and kept only if it produces no findings (or, when none qualify, only warnings).
 
 Board rules (buttons, LEDs, USB-serial wiring) wait for the board description, since there's no schematic.
 

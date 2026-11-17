@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -130,4 +131,28 @@ def test_order_and_message():
     found = rules.check(mk([{"gpio": 35, "mode": "input", "pull": "internal_up", "role": "button"}, {"gpio": 7}]))
     assert [f.gpio for f in found] == sorted(f.gpio for f in found)
     c2 = next(f for f in found if f.rule == "C2")
-    assert "GPIO 35" in c2.message and "button" in c2.message and "25" in c2.message
+    assert "GPIO 35" in c2.message and "button" in c2.message and "Free pins" in c2.message
+
+
+def test_suggestions_are_free_and_valid():
+    # GPIO 4 holds the LED, so the button on 35 must not be offered GPIO 4 or any input-only pin.
+    m = mk([{"gpio": 35, "mode": "input", "pull": "internal_up", "role": "button"},
+            {"gpio": 4, "mode": "output", "pull": "none", "role": "led"}])
+    pins = rules.free_pins(m, m.pins[0])
+    assert pins and 4 not in pins and not set(pins) & {34, 35, 36, 37, 38, 39}
+    for g in pins:  # every suggestion passes every rule when applied
+        moved = mk([{"gpio": g, "mode": "input", "pull": "internal_up", "role": "button"},
+                    {"gpio": 4, "mode": "output", "pull": "none", "role": "led"}])
+        assert not [f for f in rules.check(moved) if f.gpio == g]
+
+
+def test_adc_suggestions_follow_wifi_and_adc_capability():
+    m = mk([{"gpio": 4, "mode": "input", "pull": "none", "role": "pot", "function": "adc"}], wifi=True)
+    c10 = next(f for f in rules.check(m) if f.rule == "C10" and f.severity == "error")
+    pins = [int(x) for x in re.findall(r"GPIO (\d+)", c10.message.split("Free pins")[1])]
+    assert pins and all(32 <= g <= 39 for g in pins)
+
+
+def test_adc_on_pin_without_adc_is_c17():
+    m = mk([{"gpio": 16, "mode": "input", "pull": "none", "role": "pot", "function": "adc"}])
+    assert ("C17", "error") in sev(m)

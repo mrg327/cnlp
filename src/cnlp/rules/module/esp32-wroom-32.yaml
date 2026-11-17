@@ -12,19 +12,19 @@ pin_sets:
 rules:
   W1:
     severity: error
-    message: "GPIO {gpio} ({role}): this pin is connected to the module's integrated flash. Move to a free GPIO such as 25."
+    message: "GPIO {gpio} ({role}): this pin is connected to the module's integrated flash. Move it. {suggest}"
   W3_EXTERNAL_PULLUP:
     id: W3
     severity: error
-    message: "GPIO 12 ({role}): the flash runs at 3.3 V, so GPIO 12 must be low at reset, and an external pull-up breaks boot. Remove the pull-up or move to another pin such as GPIO 25."
+    message: "GPIO 12 ({role}): the flash runs at 3.3 V, so GPIO 12 must be low at reset, and an external pull-up breaks boot. Remove the pull-up, or move it. {suggest}"
   W3_RESET:
     id: W3
     severity: warning
-    message: "GPIO 12 ({role}): GPIO 12 must be low at reset on this module, and whatever is attached may hold it high then. Declare 'gpio 12 is low at reset', or move to another pin such as GPIO 25."
+    message: "GPIO 12 ({role}): GPIO 12 must be low at reset on this module, and whatever is attached may hold it high then. Declare 'gpio 12 is low at reset', or move it. {suggest}"
   W4:
     severity: warning
     message: "GPIO {gpio} ({role}): strapping pin, and its level at reset isn't declared. Say 'gpio {gpio} is low at reset' or 'high at reset' so the boot mode is known."
   W5:
     severity: error
-    message: "GPIO {gpio} ({role}): GPIO 37 and 38 aren't brought out on the ESP32-WROOM-32 module. Pick another input-only pin such as GPIO 36 or 39."
+    message: "GPIO {gpio} ({role}): GPIO 37 and 38 aren't brought out on the ESP32-WROOM-32 module. Move it. {suggest}"
 
