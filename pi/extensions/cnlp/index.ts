@@ -39,7 +39,8 @@ export default function (pi: ExtensionAPI) {
   tool("cnlp_status", "cnlp status",
     "Project dashboard for the ESP32 project in the current directory: build phase, pin-plan audit verdict, " +
     "real-time rule verdict (RT1-RT6), requirement evidence counts, pins not configured yet and the current " +
-    "phase's check. Read-only. Authoritative for phase and progress; prefer it over reading docs by hand.",
+    "phase's check plus a 'Watch for' list of the current phase's common problems from the build procedure. " +
+    "Read-only. Authoritative for phase and progress; prefer it over reading docs by hand.",
     () => ["status", "."], undefined,
     "Show the ESP32 project's phase, audit, real-time and evidence status");
 
@@ -80,7 +81,7 @@ export default function (pi: ExtensionAPI) {
     return {
       systemPrompt: event.systemPrompt + "\n\n" + [
         "This directory is an ESP32 project checked by cnlp (config: " + config + ").",
-        "- Before answering about progress, the current phase, pins, rules, or whether the code is OK, call cnlp_status first; after any C code change call cnlp_audit. Base the answer on their output and quote rule IDs; don't re-derive phase or pin facts from the docs.",
+        "- Before answering about progress, the current phase, what to do or watch out for next, pins, rules, or whether the code is OK, call cnlp_status first (its 'Watch for' list is the build procedure's common problems for this phase — include them); after any C code change call cnlp_audit. Base the answer on their output and quote rule IDs; don't re-derive phase or pin facts from the docs.",
         "- Before recommending or making any pin/GPIO change (moving a signal, changing a pull), call cnlp_try with the proposed pin line and base the answer on its result; it knows the whole pin plan, including pins already in use.",
         "- When cnlp reports a finding, any fix you propose must satisfy the rule exactly as cnlp's message states it. Never say a change resolves a finding unless cnlp_audit, run after the change, no longer reports it.",
         "- Use cnlp_evidence before saying whether any requirement (R*/F*) is met. Never claim a measurement or pass that it doesn't show.",

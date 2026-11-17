@@ -177,3 +177,18 @@ Pin suggestions (2026-11-17): rule messages name free pins computed from
 the whole plan (each candidate tried and rechecked), with a warnings-only
 fallback. New rule C17 (ADC on a pin with no ADC channel) needs review.
 Pi must be run with stdin closed in headless tests.
+
+## Pi reliability (2026-11-17)
+
+`scripts/pi_scenarios.py --repeat 3 --isolated`: 7 scenarios (status,
+planted RT1/RT5, evidence refusal, pin change, planted wrong task core,
+phase watch-list, planted RT7) x 3 runs: **21/21 substantively correct**,
+4-8 s each; rule IDs quoted in 19/21 (PARAM_TASK is often paraphrased).
+Fixes that got it there: scoring substance separately from citations, and
+naming "what to watch for / do next" questions in the extension's guidance
+so Qwen uses the status watch-list instead of reading the procedure.
+
+`--isolated` loads only the cnlp extension. Needed because pi-subagents
+0.89.0 (updated 2026-11-17 12:52) rejects `modelExclusions` in
+`~/.pi/agent/extensions/subagent/config.json`, so Pi does not start with the
+user's full extension set until that key is removed (user's call).
