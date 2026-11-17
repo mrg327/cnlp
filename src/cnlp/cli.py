@@ -1,6 +1,7 @@
 """`cnlp` command line. Thin wiring only: each command calls one module function.
 
-Machine output is JSON on stdout. Exit codes: 0 ok, 1 findings/refusal, 2 usage or input error.
+Output is readable text by default; `--json` (before or after the subcommand) prints the raw
+JSON instead. Exit codes: 0 ok, 1 findings/refusal, 2 usage or input error.
 
 Project layout (directory given by --project, default "."):
   spec.cnl                    controlled English, the source of truth with decisions.jsonl
@@ -25,6 +26,33 @@ def _emit(obj: Any) -> None:
     sys.stdout.write("\n")
 
 
+def _formatter(a: argparse.Namespace) -> Any:
+    from cnlp import output as o
+
+    name = a.fn.__name__.removeprefix("cmd_")
+    if name == "gate":
+        name = "gate_" + a.gate_cmd
+    if name == "evidence":
+        name = "evidence_add" if a.ev_cmd == "add" else "evidence"
+    table = {"check_pins": o.fmt_findings("Pins"), "check_fsm": o.fmt_findings("State machines"),
+             "lint": o.fmt_findings("Lint")}
+    return table.get(name) or getattr(o, "fmt_" + name)
+
+
+def _out(a: argparse.Namespace, obj: Any) -> None:
+    """JSON with --json, else the human formatter (errors go to stderr as text)."""
+    if getattr(a, "json", False):
+        _emit(obj)
+        return
+    from cnlp import output
+
+    st = output.Style(project=str(a.project))
+    if isinstance(obj, dict) and obj.get("ok") is False and "error" in obj:
+        sys.stderr.write(output.fmt_error(obj, output.Style(sys.stderr, project=str(a.project))) + "\n")
+        return
+    sys.stdout.write(_formatter(a)(obj, st) + "\n")
+
+
 def _manifest_path(project: Path) -> Path:
     return project / ".cnlp" / "manifest.yaml"
 
@@ -37,13 +65,13 @@ def cmd_translate(a: argparse.Namespace) -> int:
     try:
         m = cnl.parse(text)
     except cnl.CnlError as e:
-        _emit({"ok": False, "errors": e.to_list()})
+        _out(a, {"ok": False, "errors": e.to_list()})
         return 1
     out = _manifest_path(a.project)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(m.to_yaml())
     rt = cnl.render(m)
-    _emit({"ok": True, "manifest": str(out), "assumptions": cnl.assumptions(m, text=text),
+    _out(a, {"ok": True, "manifest": str(out), "assumptions": cnl.assumptions(m, text=text),
            "round_trip_ok": cnl.parse(rt) == m})
     return 0
 
@@ -53,16 +81,16 @@ def cmd_spec(a: argparse.Namespace) -> int:
 
     request = Path(a.file).read_text() if a.file else a.request
     if not request:
-        _emit({"ok": False, "error": "Give a request in quotes, or --file request.md"})
+        _out(a, {"ok": False, "error": "Give a request in quotes, or --file request.md"})
         return 2
     try:
         r = nl.translate(request, n=a.n, board=a.board)
     except llm.LlmError as e:
-        _emit({"ok": False, "error": str(e)})
+        _out(a, {"ok": False, "error": str(e)})
         return 2
     a.project.mkdir(parents=True, exist_ok=True)
     nl.write_project(a.project, request, r)
-    _emit({"ok": r.ok, "agreed": r.agreed, "spec": str(a.project / "spec.cnl"),
+    _out(a, {"ok": r.ok, "agreed": r.agreed, "spec": str(a.project / "spec.cnl"),
            "questions": r.questions, "assumptions": r.assumptions,
            "next": "Answer the questions by editing spec.cnl, then run `cnlp translate` "
                    "and `cnlp gate review`."})
@@ -81,7 +109,7 @@ def cmd_check_pins(a: argparse.Namespace) -> int:
 
     m = manifest.load(a.manifest or _manifest_path(a.project))
     findings = rules.check(m)
-    _emit({"ok": not any(f.severity == "error" for f in findings),
+    _out(a, {"ok": not any(f.severity == "error" for f in findings),
            "findings": [f.to_dict() for f in findings]})
     return 1 if any(f.severity == "error" for f in findings) else 0
 
@@ -92,14 +120,14 @@ def cmd_gen(a: argparse.Namespace) -> int:
     m = manifest.load(_manifest_path(a.project))
     errors = [f for f in rules.check(m) + fsm.check(m) if f.severity == "error"]
     if errors:
-        _emit({"ok": False, "reason": "pin or state-machine rules failed; run check-pins / check-fsm",
+        _out(a, {"ok": False, "reason": "pin or state-machine rules failed; run check-pins / check-fsm",
                "findings": [f.to_dict() for f in errors]})
         return 1
     from cnlp import sync
 
     files = codegen.generate(m, a.project / "components" / "board")
     sync.record(a.project, files)
-    _emit({"ok": True, "files": files})
+    _out(a, {"ok": True, "files": files})
     return 0
 
 
@@ -109,7 +137,7 @@ def cmd_check_fsm(a: argparse.Namespace) -> int:
     m = manifest.load(_manifest_path(a.project))
     findings = fsm.check(m)
     errors = any(f.severity == "error" for f in findings)
-    _emit({"ok": not errors, "findings": [f.to_dict() for f in findings]})
+    _out(a, {"ok": not errors, "findings": [f.to_dict() for f in findings]})
     return 1 if errors else 0
 
 
@@ -119,12 +147,12 @@ def cmd_audit(a: argparse.Namespace) -> int:
     try:
         cfg = audit.find_config(Path(a.config))
     except audit.AuditError as e:
-        _emit({"ok": False, "error": str(e)})
+        _out(a, {"ok": False, "error": str(e)})
         return 2
     result = audit.audit(cfg)
     if a.save:
         audit.write_report(result, cfg)
-    _emit(result)
+    _out(a, result)
     return 0 if result.get("ok") else 1
 
 
@@ -133,7 +161,7 @@ def cmd_lint(a: argparse.Namespace) -> int:
 
     findings = lint.run(a.project)
     errors = any(f.severity == "error" for f in findings)
-    _emit({"ok": not errors, "findings": [f.to_dict() for f in findings]})
+    _out(a, {"ok": not errors, "findings": [f.to_dict() for f in findings]})
     return 1 if errors else 0
 
 
@@ -147,7 +175,7 @@ def cmd_sync(a: argparse.Namespace) -> int:
         spec = sync.proposed_spec(a.project) if result.get("proposals") else None
         if spec:
             result["proposed_spec"] = spec
-    _emit(result)
+    _out(a, result)
     return 0 if result.get("ok") else 1
 
 
@@ -156,14 +184,14 @@ def cmd_gate(a: argparse.Namespace) -> int:
 
     if a.gate_cmd == "review":
         if not sys.stdin.isatty():
-            _emit({"ok": False, "error": "gate review is interactive; use gate next / gate answer"})
+            _out(a, {"ok": False, "error": "gate review is interactive; use gate next / gate answer"})
             return 2
         return gates.review(a.project)
     if a.gate_cmd == "next":
-        _emit(gates.next_gate(a.project, only=a.gate))
+        _out(a, gates.next_gate(a.project, only=a.gate))
         return 0
     ok, msg = gates.answer(a.project, a.id, a.hash, a.choice, a.note)
-    _emit({"ok": ok, "message": msg})
+    _out(a, {"ok": ok, "message": msg})
     return 0 if ok else 1
 
 
@@ -171,7 +199,7 @@ def cmd_flash(a: argparse.Namespace) -> int:
     from cnlp import broker
 
     result = broker.flash(a.project, port=a.port)
-    _emit(result)
+    _out(a, result)
     return 0 if result.get("ok") else 1
 
 
@@ -180,14 +208,58 @@ def cmd_readback(a: argparse.Namespace) -> int:
 
     m = manifest.load(_manifest_path(a.project))
     diffs = readback.diff(m, readback.parse(Path(a.log).read_text()))
-    _emit({"ok": not diffs, "mismatches": diffs})
+    _out(a, {"ok": not diffs, "mismatches": diffs})
     return 0 if not diffs else 1
+
+
+def cmd_evidence(a: argparse.Namespace) -> int:
+    from cnlp import audit
+
+    try:
+        from cnlp import evidence
+    except ImportError as e:
+        _out(a, {"ok": False, "error": f"evidence support is not available yet ({e})"})
+        return 2
+    args = list(a.args)
+    a.ev_cmd = "add" if args[0] == "add" and len(args) > 1 else "show"
+    if a.ev_cmd == "add":
+        args = args[1:]
+        if len(args) != 4 or args[3] not in ("pass", "fail"):
+            _out(a, {"ok": False, "error": "usage: cnlp evidence add <config> <REQ> <type> pass|fail"
+                                           " [--value V --unit U --criterion C --source S --note N]"})
+            return 2
+    elif len(args) != 1:
+        _out(a, {"ok": False, "error": "usage: cnlp evidence <config>"})
+        return 2
+    try:
+        cfg = audit.find_config(Path(args[0]))
+        if a.ev_cmd == "add":
+            rec = evidence.add(cfg, args[1], args[2], args[3], value=a.value, unit=a.unit,
+                               criterion=a.criterion, source=a.source, note=a.note)
+            if isinstance(rec, dict):
+                rec = {"req": args[1], "type": args[2], "result": args[3], "value": a.value,
+                       "unit": a.unit, "criterion": a.criterion, **rec}
+            _out(a, rec)
+            return 0
+        result = evidence.build(cfg)
+    except (audit.AuditError, ValueError, KeyError) as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+    _out(a, result)
+    return 0 if result.get("ok") else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cnlp", description=__doc__.splitlines()[0])
     p.add_argument("--project", type=Path, default=Path("."))
+    p.add_argument("--json", action="store_true", help="print raw JSON instead of readable text")
+    # Same flag after the subcommand; SUPPRESS keeps a value given before it.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                        help="print raw JSON instead of readable text")
     sub = p.add_subparsers(dest="cmd", required=True)
+    _add = sub.add_parser
+    sub.add_parser = lambda *x, **k: _add(*x, parents=[common], **k)  # type: ignore[method-assign]
 
     s = sub.add_parser("translate", help="controlled English -> manifest")
     s.add_argument("file", nargs="?")
@@ -224,6 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("gate", help="review and answer approval gates")
     gs = s.add_subparsers(dest="gate_cmd", required=True)
+    _gadd = gs.add_parser
+    gs.add_parser = lambda *x, **k: _gadd(*x, parents=[common], **k)  # type: ignore[method-assign]
     gs.add_parser("review", help="interactively review each pending gate in order")
     n = gs.add_parser("next")
     n.add_argument("--gate", dest="gate")
@@ -241,6 +315,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("readback", help="diff a captured serial log against the manifest")
     s.add_argument("log")
     s.set_defaults(fn=cmd_readback)
+
+    s = sub.add_parser("evidence", help="requirements evidence matrix; `evidence add` records one")
+    s.add_argument("args", nargs="+", metavar="config | add config REQ type pass|fail")
+    s.add_argument("--value")
+    s.add_argument("--unit")
+    s.add_argument("--criterion")
+    s.add_argument("--source")
+    s.add_argument("--note")
+    s.set_defaults(fn=cmd_evidence)
     return p
 
 
@@ -249,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return a.fn(a)
     except (ManifestError, FileNotFoundError) as e:
-        _emit({"ok": False, "error": str(e)})
+        _out(a, {"ok": False, "error": str(e)})
         return 2
 
 

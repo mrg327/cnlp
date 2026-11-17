@@ -83,8 +83,16 @@ read-only checks on the user's own code, never generated code or writes there.
   code agree on the 15 pins configured so far; 5 planned pins not configured
   yet (encoder, OLED; later phases); GPIO 2 strapping warnings (C6, W4).
 
-Next for the synth: evidence matrix from its verification plan and scope
-measurements.
+- Evidence matrix: `cnlp evidence projects/synth` reads R1-R6 and F1-F11 and
+  the verification plan from a temp copy of the synth's `docs/spec.md`;
+  `projects/synth/requirements.yaml` says which evidence types count per
+  requirement. Clean RT/audit checks add `static` support (never enough
+  alone for timing). The user records measurements with
+  `cnlp evidence add projects/synth R4 measured_scope pass --value ...`;
+  nothing is recorded automatically. Status on 2026-11-17: 0/17 with
+  evidence yet (expected at phase 3).
+
+CLI output is human-readable by default; `--json` gives the raw JSON.
 
 ## Qwen spike results (2026-11-17)
 

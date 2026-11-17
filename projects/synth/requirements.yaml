@@ -1,0 +1,29 @@
+# Per-requirement metadata for the evidence matrix. Requirement sentences and the
+# verification-plan "Covers" mapping are read at runtime from the target's spec.
+# Evidence types (strongest first): measured_scope, tested, measured_serial,
+# static, reviewed. A requirement is satisfied only by a passing record whose
+# type is in its `accepts`. Static checks link automatic lint rules to a
+# requirement; for timing requirements they are support, never sufficient.
+spec: docs/spec.md
+evidence: evidence.jsonl
+accepted_unverified: []        # IDs the user explicitly accepted without evidence
+requirements:
+  R1: {kind: timing, accepts: [measured_scope, measured_serial, tested],
+       static_checks: [RT1_AUDIO_BLOCKING, RT4_TASK_NO_BLOCK, RT5_DOUBLE, RT5_ISR_FLOAT]}
+  R2: {kind: design, accepts: [reviewed], static_checks: [RT1_AUDIO_BLOCKING, RT3_SHARED_WRITER]}
+  R3: {kind: timing, accepts: [measured_scope]}
+  R4: {kind: timing, accepts: [measured_scope, measured_serial]}
+  R5: {kind: timing, accepts: [measured_scope, measured_serial, tested],
+       static_checks: [RT1_AUDIO_BLOCKING, RT3_SHARED_WRITER]}
+  R6: {kind: functional, accepts: [tested], static_checks: [RT2_QUEUE_TIMEOUT]}
+  F1: {kind: functional, accepts: [tested, reviewed]}
+  F2: {kind: functional, accepts: [tested, reviewed]}
+  F3: {kind: functional, accepts: [tested, reviewed]}
+  F4: {kind: functional, accepts: [tested, reviewed]}
+  F5: {kind: functional, accepts: [tested, reviewed]}
+  F6: {kind: functional, accepts: [tested, reviewed]}
+  F7: {kind: functional, accepts: [reviewed, tested]}
+  F8: {kind: functional, accepts: [reviewed, measured_scope, tested]}
+  F9: {kind: functional, accepts: [tested, measured_scope, reviewed]}
+  F10: {kind: functional, accepts: [tested]}
+  F11: {kind: functional, accepts: [tested, reviewed]}

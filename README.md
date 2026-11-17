@@ -22,6 +22,10 @@ uv run cnlp --project $P gate review    # flash gate shows the image hash
 uv run cnlp --project $P flash          # flashes only the approved image, then diffs readback
 ```
 
+Output is readable text by default. Add `--json` (before or after the subcommand) for the
+raw JSON, for scripts and agents: `uv run cnlp --json --project $P check-pins`. Exit codes
+are the same either way.
+
 ## How it works
 
 1. The user describes the device in plain English.
