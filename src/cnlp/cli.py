@@ -53,6 +53,38 @@ def _out(a: argparse.Namespace, obj: Any) -> None:
     sys.stdout.write(_formatter(a)(obj, st) + "\n")
 
 
+def cmd_try(a: argparse.Namespace) -> int:
+    from cnlp import audit, whatif
+
+    try:
+        cfg = audit.find_config(Path(a.project_dir))
+        result = whatif.try_change(cfg, a.statements)
+    except (audit.AuditError, whatif.WhatIfError) as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+    _out(a, result)
+    return 0 if result["ok"] else 1
+
+
+def cmd_config(a: argparse.Namespace) -> int:
+    """Print the cnlp config that covers a directory (exit 1 if none). Cheap: reads no target files."""
+    from cnlp import audit
+
+    try:
+        cfg = audit.find_config(Path(a.dir))
+    except audit.AuditError as e:
+        if getattr(a, "json", False):
+            _emit({"ok": False, "error": str(e)})
+        else:
+            sys.stderr.write(str(e) + "\n")
+        return 1
+    if getattr(a, "json", False):
+        _emit({"ok": True, "config": str(cfg), "name": cfg.parent.name})
+    else:
+        sys.stdout.write(f"{cfg}\n")
+    return 0
+
+
 def cmd_ask(a: argparse.Namespace) -> int:
     from cnlp import ask as asker
     from cnlp import audit, llm, output
@@ -346,6 +378,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-n", type=int, default=3, help="samples for self-consistency")
     s.add_argument("--board", default="devkit-v1")
     s.set_defaults(fn=cmd_spec)
+
+    s = sub.add_parser("try", help="what-if: check a proposed pin change against all pin rules")
+    s.add_argument("statements", help='controlled English, e.g. \'gpio 35 is input "enc sw" with internal pull-up.\'')
+    s.add_argument("project_dir", nargs="?", default=".")
+    s.set_defaults(fn=cmd_try)
+
+    s = sub.add_parser("config", help="show which cnlp config covers a directory")
+    s.add_argument("dir", nargs="?", default=".")
+    s.set_defaults(fn=cmd_config)
 
     s = sub.add_parser("ask", help="ask a question about cnlp, your project or the board")
     s.add_argument("question")

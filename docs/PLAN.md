@@ -148,3 +148,30 @@ top_k 20, 120K context; `qwen-plan` is the same model with thinking on.
 
 These follow the build plan in `design.md`. Each one is broken into steps
 here when it starts, after its spikes have run.
+
+## Pi integration (2026-11-17)
+
+Daily workflow: the user builds the synth in Pi (local Qwen) with cnlp, with
+occasional Claude check-ins.
+
+- `pi/extensions/cnlp` (symlinked into `~/.pi/agent/extensions/cnlp`):
+  registers `cnlp_status`, `cnlp_audit`, `cnlp_evidence`, `cnlp_try`,
+  `cnlp_ask` as Pi tools; when the session is in a cnlp project it tells
+  the model to use them first; a `tool_call` hook blocks bash commands that
+  would flash, answer gates, record evidence, `measure --record` or
+  `sync --apply`.
+- `pi/skills/cnlp` (symlinked into `~/.pi/agent/skills/cnlp`): the same
+  guidance as a skill. On its own, Qwen ignored the skill and read files by
+  hand (wrong phase, 14 tool calls); with the extension it calls one cnlp
+  tool and answers correctly in ~10 s.
+- `cnlp try "<pin line>"`: deterministic what-if for pin changes (found the
+  GPIO 35 conflict Qwen missed). `cnlp config`: which config covers a dir.
+- `scripts/pi_scenarios.py <project>`: four headless scenarios on temp
+  copies (status, planted RT violation, record-evidence refusal, pin
+  change). Last run: all pass; the RT scenario is flaky (sometimes omits
+  rule IDs).
+- `evidence add` now splits `1.001ms` into value and unit and requires
+  `--criterion` for measurements.
+
+Known gaps: rule messages suggest fixed pins ("move to GPIO 25") without
+checking the plan; Pi must be run with stdin closed in headless tests.

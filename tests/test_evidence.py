@@ -71,7 +71,8 @@ def test_static_fail(env):
 
 
 def test_add_and_strength(cfg):
-    evidence.add(cfg, "R1", "measured_scope", "pass", value=1.2, unit="ms", note="scope")
+    evidence.add(cfg, "R1", "measured_scope", "pass", value=1.2, unit="ms", criterion="< 1.6 ms",
+                 note="scope")
     evidence.add(cfg, "R1", "reviewed", "pass")
     res = evidence.build(cfg)
     r = row(res, "R1")
@@ -124,3 +125,20 @@ def test_accepted_flag(cfg):
     d["accepted_unverified"] = ["F2"]
     (cfg.parent / "requirements.yaml").write_text(yaml.safe_dump(d))
     assert row(evidence.build(cfg), "F2")["status"] == "accepted"
+
+
+def test_split_value_parses_units():
+    from cnlp.evidence import EvidenceError, _split_value
+    assert _split_value("1.001ms", None) == (1.001, "ms")
+    assert _split_value("42", "Hz") == (42.0, "Hz")
+    assert _split_value(0.9, "ms") == (0.9, "ms")
+    assert _split_value("n/a", None) == ("n/a", None)
+    import pytest
+    with pytest.raises(EvidenceError):
+        _split_value("1ms", "s")
+
+
+def test_measurement_needs_criterion(cfg):
+    from cnlp.evidence import EvidenceError
+    with pytest.raises(EvidenceError, match="criterion"):
+        evidence.add(cfg, "R1", "measured_scope", "pass", value=1.2, unit="ms")

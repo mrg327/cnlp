@@ -26,6 +26,18 @@ Output is readable text by default. Add `--json` (before or after the subcommand
 raw JSON, for scripts and agents: `uv run cnlp --json --project $P check-pins`. Exit codes
 are the same either way.
 
+## Using it from Pi
+
+```bash
+ln -sfn ~/projects/cnlp/pi/extensions/cnlp ~/.pi/agent/extensions/cnlp
+ln -sfn ~/projects/cnlp/pi/skills/cnlp ~/.pi/agent/skills/cnlp
+```
+
+In a project covered by a cnlp config, Pi gets read-only tools
+(`cnlp_status`, `cnlp_audit`, `cnlp_evidence`, `cnlp_try`, `cnlp_ask`), and
+commands that record approvals or measurements are blocked for the model.
+`scripts/pi_scenarios.py <project>` re-checks the integration on temp copies.
+
 ## How it works
 
 1. The user describes the device in plain English.

@@ -445,3 +445,25 @@ def fmt_status(obj: dict, st: Style) -> str:
     for n in obj.get("notes", []) or []:
         lines.append(_wrap("  - ", "  - ", str(n), st.width))
     return "\n".join(lines)
+
+
+def fmt_try(obj: dict, st: Style) -> str:
+    """What-if result: what the proposed pin change would introduce or resolve."""
+    intro, res = obj.get("introduced", []), obj.get("resolved", [])
+    errs = [f for f in intro if f.get("severity") == "error"]
+    warns = [f for f in intro if f.get("severity") != "error"]
+    if errs:
+        head = f"{st.sym('error')} This change would break {plural(len(errs), 'rule')}"
+    elif warns:
+        head = f"{st.sym('warning')} Allowed, with {plural(len(warns), 'new warning')}"
+    else:
+        head = f"{st.sym('ok')} No new findings"
+    lines = [head, f"  change: {obj.get('change', '')}"]
+    for n in obj.get("applied", []):
+        lines.append(f"  {n}")
+    for title, items in (("Would introduce", errs + warns), ("Would resolve", res)):
+        if items:
+            lines += ["", title]
+            lines += finding_lines(items, st)
+    lines += ["", "Nothing was changed; edit spec.cnl (and the code) yourself if you want it."]
+    return "\n".join(lines)

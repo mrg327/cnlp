@@ -401,9 +401,12 @@ class Checker:
                                 "error",
                                 f.rel,
                                 c.line,
-                                f"{c.name}() is {kind} in the real-time path ({chain}); the "
-                                "audio task may only block in its allowed call "
-                                "(real-time rule 1)",
+                                f"{c.name}() is {kind} in the real-time path ({chain}). "
+                                f"Anywhere in {entry}'s loop or the functions it calls counts, "
+                                "before or after the allowed blocking call; moving it within "
+                                "the task does not fix it. Remove it, or hand the data to a "
+                                "lower-priority task (e.g. a volatile counter or a zero-timeout "
+                                "queue) and log there (real-time rule 1)",
                                 key=c.name,
                             )
 

@@ -177,6 +177,22 @@ def _spec_for(rcfg: dict, target: Path) -> tuple[dict, dict]:
         return parse_spec(spec.read_text("utf-8"))
 
 
+_VALUE_RE = re.compile(r"^\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*([A-Za-zµ%]+)?\s*$")
+
+
+def _split_value(value: Any, unit: str | None) -> tuple[Any, str | None]:
+    """'1.001ms' -> (1.001, 'ms'); '42' -> (42.0, unit). Anything else is kept as given."""
+    if value is None or isinstance(value, (int, float)):
+        return value, unit
+    m = _VALUE_RE.match(str(value))
+    if not m:
+        return value, unit
+    num, suffix = float(m.group(1)), m.group(2)
+    if suffix and unit and suffix != unit:
+        raise EvidenceError(f"value says {suffix!r} but --unit says {unit!r}")
+    return num, unit or suffix
+
+
 def add(cfg_path: Path, req: str, type: str, result: str, *, value=None, unit=None,
         criterion=None, source=None, note: str = "", synth_commit: str | None = None) -> dict:
     """Append one user-recorded evidence record to projects/<name>/evidence.jsonl."""
@@ -188,6 +204,11 @@ def add(cfg_path: Path, req: str, type: str, result: str, *, value=None, unit=No
         raise EvidenceError(f"unknown evidence type {type!r}; allowed: {', '.join(sorted(TYPES))}")
     if result not in RESULTS:
         raise EvidenceError("result must be 'pass' or 'fail'")
+    value, unit = _split_value(value, unit)
+    if type.startswith("measured_") and not criterion:
+        raise EvidenceError(
+            "a measurement needs the criterion it was checked against, e.g. "
+            "--criterion \"1 ms ±2%\" (see the verification plan for this requirement)")
     rec: dict[str, Any] = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "req": req,
                            "type": type, "result": result}
     for k, v in (("value", value), ("unit", unit), ("criterion", criterion), ("source", source)):

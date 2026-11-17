@@ -16,7 +16,9 @@ root and pass `.` as the project.
 | Start of a session, or "where am I?" | `cnlp status .` |
 | After any change to C code or pins | `cnlp audit .` |
 | Questions about verification / requirements | `cnlp evidence .` |
-| Questions about cnlp itself, rules, pins | `cnlp ask "<question>" --project-config .` (if `ask` exists; else `cnlp --help` and `cnlp <cmd> --help`) |
+| Before proposing any pin/GPIO change | `cnlp try 'gpio 35 is input "enc sw" with internal pull-up.'` (what-if against the whole pin plan; changes nothing) |
+| Questions about cnlp itself, a rule ID, a pin, or what command to use | `cnlp ask "<question>"` (answers from cnlp's own sources; `?` means it doesn't know) |
+| Exact flags of a command | `cnlp <cmd> --help` |
 
 Add `--json` when you need to parse the output; the default text is for people.
 Exit code 1 means findings with errors, 2 means a usage or setup error.

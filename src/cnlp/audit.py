@@ -332,8 +332,8 @@ def find_config(path: Path, root: Path | None = None) -> Path:
         if target and Path(str(target)).expanduser().resolve() == want:
             return cfg
     raise AuditError(
-        f"No audit config for {p}. Create {root}/<name>/audit.yaml with "
-        f"'target: {p}' (see projects/synth/audit.yaml).")
+        f"No audit config for {want}. Create {root}/<name>/audit.yaml with "
+        f"'target: {want}' (see projects/synth/audit.yaml).")
 
 
 def audit(config_path: Path) -> dict[str, Any]:
