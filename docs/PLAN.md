@@ -192,3 +192,19 @@ so Qwen uses the status watch-list instead of reading the procedure.
 0.89.0 (updated 2026-11-17 12:52) rejects `modelExclusions` in
 `~/.pi/agent/extensions/subagent/config.json`, so Pi does not start with the
 user's full extension set until that key is removed (user's call).
+
+## cnlp ask and the knowledge index (2026-11-17)
+
+- Every rule ID any module emits gets an indexed chunk, found by scanning the
+  source (a test enforces it); every command has a chunk; project key
+  parameters and per-phase watch-lists are indexed.
+- Pin-move questions are answered with a concrete `cnlp try '<pin line>'`
+  built from the plan and validated before it is shown; prompt-injection
+  questions ("ignore your rules", "run cnlp flash", "write scan_task") are
+  refused without calling the model.
+- `cnlp audit`, `cnlp status` and `cnlp evidence [add]` default to the
+  project in the current directory.
+- Eval (54 questions, scratchpad copy of the synth): 42/54 before, 53/54
+  after (measured by me on a fresh copy), 27/27 answers fully grounded.
+  The one miss was a correct `cnlp status` suggestion where an answer was
+  expected; state questions may now be answered either way.

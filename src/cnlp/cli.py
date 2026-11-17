@@ -315,10 +315,12 @@ def cmd_evidence(a: argparse.Namespace) -> int:
     except ImportError as e:
         _out(a, {"ok": False, "error": f"evidence support is not available yet ({e})"})
         return 2
-    args = list(a.args)
+    args = list(a.args) or ["."]  # default: the project in the current directory
     a.ev_cmd = "add" if args[0] == "add" and len(args) > 1 else "show"
     if a.ev_cmd == "add":
         args = args[1:]
+        if len(args) == 3:  # `evidence add REQ type result` from inside the project
+            args = [".", *args]
         if len(args) != 4 or args[3] not in ("pass", "fail"):
             _out(a, {"ok": False, "error": "usage: cnlp evidence add <config> <REQ> <type> pass|fail"
                                            " [--value V --unit U --criterion C --source S --note N]"})
@@ -408,7 +410,8 @@ def build_parser() -> argparse.ArgumentParser:
                    ).set_defaults(fn=cmd_lint)
 
     s = sub.add_parser("audit", help="read-only audit of an existing project (works on a snapshot)")
-    s.add_argument("config", help="the project dir to audit, projects/<name>, or an audit.yaml")
+    s.add_argument("config", nargs="?", default=".",
+                   help="the project dir to audit (default: current dir), projects/<name>, or an audit.yaml")
     s.add_argument("--save", action="store_true", help="also write <name>/.cnlp/audit.json")
     s.set_defaults(fn=cmd_audit)
 
@@ -454,7 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_measure)
 
     s = sub.add_parser("evidence", help="requirements evidence matrix; `evidence add` records one")
-    s.add_argument("args", nargs="+", metavar="config | add config REQ type pass|fail")
+    s.add_argument("args", nargs="*", metavar="[config] | add [config] REQ type pass|fail")
     s.add_argument("--value")
     s.add_argument("--unit")
     s.add_argument("--criterion")
@@ -463,7 +466,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_evidence)
 
     s = sub.add_parser("status", help="build phase plus audit/real-time/evidence summary")
-    s.add_argument("config", help="audit.yaml, its folder, or the target project directory")
+    s.add_argument("config", nargs="?", default=".",
+                   help="the project directory (default: current dir), its cnlp config folder or audit.yaml")
     s.set_defaults(fn=cmd_status)
     return p
 

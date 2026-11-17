@@ -2,6 +2,8 @@
 
 Usage: uv run python -I scripts/eval_ask.py [OUT.json] [--config audit.yaml] [--only ID,ID]
 Prints per-kind accuracy, command-match accuracy and the grounding rate.
+Entry keys: kind, subcommand, cmd_contains, cmd_parses, must_mention, refused, no_pass_claim,
+must_mention_any (at least one), sources_include (the answer must cite a source id containing one of these strings).
 """
 
 from __future__ import annotations
@@ -23,8 +25,11 @@ CORPUS = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "ask" /
 
 
 def score(e: dict, r: A.AskResult) -> tuple[bool, str]:
-    if r.kind != e["kind"]:
-        return False, f"kind {r.kind}, want {e['kind']}"
+    # `kind` may list alternatives, e.g. [command, answer]; the first is the one tallied.
+    kinds = e["kind"] if isinstance(e["kind"], list) else [e["kind"]]
+    if r.kind not in kinds:
+        return False, f"kind {r.kind}, want {' or '.join(kinds)}"
+    e = {**e, "kind": r.kind}
     if e.get("refused") and not r.refused:
         return False, "not refused"
     if e["kind"] == "command":
@@ -32,13 +37,24 @@ def score(e: dict, r: A.AskResult) -> tuple[bool, str]:
         want = e["subcommand"].split()
         if argv[: len(want)] != want:
             return False, f"command {r.command!r}, want {e['subcommand']}"
+        for frag in e.get("cmd_contains", []):
+            if frag.lower() not in (r.command or "").lower():
+                return False, f"command {r.command!r} lacks {frag!r}"
+        if e.get("cmd_parses") and "--help" in (r.command or ""):  # wanted a concrete pin line
+            return False, "fell back to --help, wanted a concrete pin line"
     if e["kind"] == "answer":
         text = (r.answer or "").lower()
         miss = [m for m in e.get("must_mention", []) if m.lower() not in text]
         if miss:
             return False, f"missing {miss}"
+        anys = e.get("must_mention_any", [])
+        if anys and not any(m.lower() in text for m in anys):
+            return False, f"missing any of {anys}"
         if e.get("no_pass_claim") and re.search(r"\bpassed\b", text) and not re.search(r"\bnot\b|\bno\b|n't", text):
             return False, "claims a pass"
+    want = e.get("sources_include", [])
+    if want and not any(any(w in sid for w in want) for sid in r.sources):
+        return False, f"sources {r.sources} lack any of {want}"
     return True, ""
 
 
@@ -60,8 +76,9 @@ def main() -> int:
         t = time.time()
         r = A.ask(e["q"], a.config, index=index)
         ok, why = score(e, r)
-        by_kind[e["kind"]][0] += ok
-        by_kind[e["kind"]][1] += 1
+        k = e["kind"][0] if isinstance(e["kind"], list) else e["kind"]
+        by_kind[k][0] += ok
+        by_kind[k][1] += 1
         if r.kind == "answer":
             answers += 1
             grounded += r.grounded

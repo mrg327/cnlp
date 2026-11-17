@@ -43,7 +43,7 @@ def test_static_chunks(static):
 def test_retrieval_ranking(static):
     assert top(static, "why can't I use a pull-up on GPIO 35") == ["rule:C2"]
     assert top(static, "how do I check my code against the pin plan") == ["cmd:audit"]
-    assert top(static, "how do I record a scope measurement") == ["cmd:evidence"]
+    assert top(static, "how do I record a scope measurement") == ["cmd:evidence-add"]
     assert top(static, "what does RT1 mean") == ["rt:RT1_AUDIO_BLOCKING"]
     assert top(static, "what is rule C2?") == ["rule:C2"]
 
@@ -58,7 +58,7 @@ def test_commands_read_only_flags():
     cmds = {c["name"]: c for c in knowledge.commands()}
     ro = {n for n, c in cmds.items() if c["read_only"]}
     assert ro == {"render", "check-pins", "check-fsm", "lint", "audit", "evidence", "status",
-                  "gate next", "sync"}
+                  "gate next", "sync", "try", "config"}
     for n in ("translate", "gen", "spec", "gate", "gate answer", "gate review", "flash",
               "measure", "evidence add", "readback"):
         assert cmds[n]["read_only"] is False, n
@@ -122,3 +122,82 @@ def test_deterministic(cfg):
     assert [c.id for c in a.chunks] == [c.id for c in b.chunks]
     q = "which pins are input-only and why"
     assert [c.id for c in a.retrieve(q)] == [c.id for c in b.retrieve(q)]
+
+
+SRC = Path(knowledge.__file__).parent
+
+
+def _emitted_in_code() -> set[str]:
+    """Rule IDs that any cnlp module (bar the index itself) names as a quoted string."""
+    import re
+
+    rx = re.compile(r"""["']((?:AUDIT|LINT|FSM|PARAM|STATUS|READBACK|GATE|SYNC|EVIDENCE)_[A-Z0-9_]+"""
+                    r"""|RT\d+_[A-Z0-9_]+|C\d+|W\d+|OWNER|FLOATING|OPEN_DRAIN_PULL|I2C_WEAK_PULL)["']""")
+    out: set[str] = set()
+    for f in SRC.glob("*.py"):
+        if f.name not in ("knowledge.py", "ask.py"):
+            out |= set(rx.findall(f.read_text("utf-8")))
+    for f in (SRC / "rules").rglob("*.yaml"):
+        data = yaml.safe_load(f.read_text("utf-8")) or {}
+        out |= {r.get("id", k) for k, r in (data.get("rules") or {}).items()}
+    return out
+
+
+def test_every_emitted_rule_has_a_chunk(static):
+    ids = _emitted_in_code()
+    assert {"C17", "RT7_PERIOD_DRIFT", "PARAM_TASK", "STATUS_PHASE_DONE_PIN_UNUSED",
+            "FSM_DEAD_END", "AUDIT_PULL"} <= ids
+    missing = [i for i in sorted(ids)
+               if not (static.get(f"rule:{i}") or static.get(f"rt:{i}"))]
+    assert not missing, missing
+    for i in ids:
+        c = static.get(f"rt:{i}") or static.get(f"rule:{i}")
+        assert len(c.text) > len(i) + 30, i  # a real description, not just the id
+
+
+def test_rule_descriptions_are_plain_english(static):
+    assert "Example message" in static.get("rule:PARAM_TASK").text
+    assert "priority" in static.get("rule:PARAM_TASK").text.lower()
+    assert "watch" in static.get("rule:STATUS_PHASE_DONE_PIN_UNUSED").text.lower() or \
+        "phase" in static.get("rule:STATUS_PHASE_DONE_PIN_UNUSED").text.lower()
+    assert "ADC" in static.get("rule:C17").text
+    assert "vTaskDelayUntil" in static.get("rt:RT7_PERIOD_DRIFT").text
+    assert "dead" in static.get("rule:FSM_DEAD_END").text.lower() or \
+        "way out" in static.get("rule:FSM_DEAD_END").text.lower()
+
+
+def test_every_command_has_a_chunk(static):
+    for c in knowledge.commands():
+        assert static.get("cmd:" + c["name"].replace(" ", "-")), c["name"]
+    for name in ("try", "config", "measure", "status", "evidence-add"):
+        assert static.get(f"cmd:{name}"), name
+    t = static.get("cmd:try").text
+    assert 'gpio <N> is' in t and "cnlp try 'gpio" in t and "pull" in t
+
+
+def test_try_example_pin_line_parses(static):
+    import re
+
+    from cnlp import cnl
+
+    m = re.search(r"cnlp try '(gpio [^']+)'", static.get("cmd:try").text)
+    assert m
+    from cnlp import whatif
+
+    base = cnl.parse('chip is esp32.\nmodule is esp32-wroom-32.\nboard is devkit-v1.\ngpio 4 is output "led" with no pull.\n')
+    _, notes = whatif.apply(base, m.group(1))
+    assert notes
+
+
+def test_board_concept_questions_prefer_rules(cfg):
+    idx = knowledge.build_index(cfg)
+    ids = [c.id for c in idx.retrieve("which GPIOs have no internal pull?", 8)]
+    assert "rule:C2" in ids
+    ids = [c.id for c in idx.retrieve("which pins are input-only?", 4)]
+    assert "rule:C2" in ids
+
+
+def test_module_doc_chunks(static):
+    assert static.get("doc:mod-params") and "parameters.yaml" in static.get("doc:mod-params").text
+    ids = [c.id for c in static.retrieve("what key parameters does cnlp check", 8)]
+    assert "doc:mod-params" in ids or any(i.startswith("rule:PARAM_") for i in ids)

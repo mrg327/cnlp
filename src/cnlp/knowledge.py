@@ -23,7 +23,7 @@ _REPO = Path(__file__).resolve().parents[2]
 
 # Commands that never change anything outside a temp snapshot.
 _READ_ONLY = {"render", "check-pins", "check-fsm", "lint", "audit", "evidence", "status",
-              "gate next", "sync"}
+              "gate next", "sync", "try", "config"}
 
 # Plain-language "use this when" text, so questions phrased without the command name still land.
 _BLURB = {
@@ -52,7 +52,14 @@ _BLURB = {
     "evidence add": "Record a measurement, scope result, test or review result as evidence for "
                     "a requirement (appends to evidence.jsonl).",
     "status": "Where the project is in its build procedure (phase) plus audit, real-time and "
-              "evidence summary: what to do next.",
+              "evidence summary: what to do next, and the phase watch-list of common problems.",
+    "try": "What-if for a pin change: can I move a pin, use GPIO N for something, would this "
+           "break a rule? Checks one proposed pin line against all pin rules without changing "
+           "anything. Pin-line format: gpio <N> is <input|output|adc|...> \"<role>\" with "
+           "<no pull|internal pull-up|internal pull-down|external pull-up|off-board pull-up>. "
+           "Example: cnlp try 'gpio 5 is output \"probe scan\" with no pull.' A pin line whose "
+           "role already exists on another GPIO is a move of that role.",
+    "config": "Show which cnlp config (projects/<name>/audit.yaml) covers a directory.",
 }
 
 _AUDIT_RULES = {
@@ -197,8 +204,6 @@ def _command_chunks() -> list[Chunk]:
     out = []
     for c in commands():
         name = c["name"]
-        if name == "evidence add":  # described inside the `evidence` chunk
-            continue
         parts = [f"cnlp {name}: {c['help'] or _BLURB.get(name, '')}".rstrip(": "),
                  _BLURB.get(name, ""),
                  f"Usage: {c['usage']}",
@@ -206,6 +211,10 @@ def _command_chunks() -> list[Chunk]:
                  else "Read-only: no (writes files, calls a model, or touches hardware)."]
         if name == "sync":
             parts.append("Plain `sync` only scans; `sync --apply` writes spec.cnl.")
+        if name == "evidence add":
+            parts.append("Records one piece of evidence (measured_scope, tested, measured_serial, "
+                         "static, reviewed) for a requirement and writes evidence.jsonl. cnlp "
+                         "never records evidence on its own; the user runs this after measuring.")
         if name == "evidence":
             parts.append("Building the matrix is read-only; `evidence add CONFIG REQ TYPE pass|fail "
                          "[--value V --unit U --criterion C --source S --note N]` records "
@@ -253,6 +262,27 @@ def _doc_chunks(notes: list[str]) -> list[Chunk]:
             for i, piece in enumerate(pieces):
                 cid = f"doc:{key}#{slug}" + (f"-p{i + 1}" if i else "")
                 out.append(Chunk(cid, f"{rel} § {title}", title, piece, "doc"))
+    return out
+
+
+# Modules whose docstring explains a feature in plain terms; indexed as `doc:mod-<name>`.
+_MODULE_DOCS = ("params", "status", "whatif", "audit", "phases", "measure", "evidence")
+
+
+def _module_doc_chunks(notes: list[str]) -> list[Chunk]:
+    import importlib
+
+    out: list[Chunk] = []
+    for name in _MODULE_DOCS:
+        try:
+            doc = importlib.import_module(f"cnlp.{name}").__doc__ or ""
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"module cnlp.{name} not indexed: {e}")
+            continue
+        pieces = _pieces(doc) if doc.strip() else []
+        for i, piece in enumerate(pieces[:3]):
+            out.append(Chunk(f"doc:mod-{name}" + (f"-p{i + 1}" if i else ""),
+                             f"cnlp/{name}.py docstring", f"cnlp {name} module", piece, "doc"))
     return out
 
 
@@ -305,16 +335,127 @@ def _rule_chunks(notes: list[str]) -> list[Chunk]:
             out.append(Chunk(f"rule:{rid}", label, title,
                              _clip(f"{title}. " + " ".join(msgs) + (f" {pins}" if pins else "")),
                              "rule"))
-    for rid, d in _AUDIT_RULES.items():
-        out.append(Chunk(f"rule:{rid}", "cnlp audit rules (audit.py)", f"audit rule {rid}",
-                         f"audit rule {rid}. {d}", "rule"))
-    for rid, d in _LINT_RULES.items():
-        out.append(Chunk(f"rule:{rid}", "cnlp lint rules (lint.py)", f"lint rule {rid}",
-                         f"lint rule {rid}. {d}", "rule"))
+    have = {c.id for c in out}
     out += _rt_chunks(notes)
+    have |= {c.id for c in out}
+    out += _emitted_rule_chunks(have, notes)
     return out
 
 
+# Rule IDs that code emits as string literals; matched the same way by the completeness test.
+EMITTED_ID_RX = re.compile(
+    r"^(?:(?:AUDIT|LINT|FSM|PARAM|STATUS|READBACK|GATE|SYNC|EVIDENCE)_[A-Z0-9_]+"
+    r"|RT\d+_[A-Z0-9_]+|[CW]\d+|OWNER|FLOATING|OPEN_DRAIN_PULL|I2C_WEAK_PULL)$")
+_FAMILY = {
+    "AUDIT": ("cnlp audit rules", "audit rule", "Reported by `cnlp audit` (code vs pin plan)."),
+    "LINT": ("cnlp lint rules (lint.py)", "lint rule", "Reported by `cnlp lint` and `cnlp audit`."),
+    "FSM": ("state machine rules (fsm.py)", "state machine rule", "Reported by `cnlp check-fsm`."),
+    "PARAM": ("key-parameter audit (params.py)", "key parameter rule",
+              ("Reported by `cnlp audit` when the project has a parameters.yaml: expected values "
+               "(sdkconfig, constants, driver fields, task priority and core) versus the code.")),
+    "STATUS": ("cnlp status (status.py)", "status rule", "Reported by `cnlp status`."),
+    "RT": ("real-time lint (rtlint.py)", "real-time rule", "Reported by `cnlp lint`."),
+}
+_SRC_SKIP = {"knowledge.py", "ask.py", "__init__.py"}
+
+
+def _msg_text(node: Any) -> str:
+    """Readable text of a message expression: literal pieces kept, f-string fields as <...>."""
+    import ast
+
+    parts: list[str] = []
+
+    def walk(n: Any) -> None:
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            parts.append(n.value)
+        elif isinstance(n, ast.JoinedStr):
+            for v in n.values:
+                if isinstance(v, ast.Constant):
+                    parts.append(str(v.value))
+                else:
+                    parts.append("<...>")
+        elif isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+            walk(n.left)
+            walk(n.right)
+    walk(node)
+    return " ".join("".join(parts).split())
+
+
+def _scan_emitted() -> dict[str, dict]:
+    """{rule id: {file, severity, message}} for rule IDs emitted by calls/dicts in src/cnlp."""
+    import ast
+
+    found: dict[str, dict] = {}
+
+    def note(rid: str, file: str, sev: str | None, msg: str) -> None:
+        d = found.setdefault(rid, {"file": file, "severity": None, "message": "", "docs": []})
+        d["severity"] = d["severity"] or sev
+        if len(msg) > len(d["message"]):
+            d["message"] = msg
+
+    for path in sorted(Path(__file__).resolve().parent.glob("*.py")):
+        if path.name in _SRC_SKIP:
+            continue
+        try:
+            tree = ast.parse(path.read_text("utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for i, a in enumerate(node.args):
+                    if isinstance(a, ast.Constant) and isinstance(a.value, str) \
+                            and EMITTED_ID_RX.match(a.value):
+                        rest = node.args[i + 1:]
+                        sev = next((r.value for r in rest if isinstance(r, ast.Constant)
+                                    and r.value in ("error", "warning", "info")), None)
+                        msg = next((_msg_text(r) for r in rest
+                                    if isinstance(r, (ast.JoinedStr, ast.BinOp))
+                                    or (isinstance(r, ast.Constant) and isinstance(r.value, str)
+                                        and r.value not in ("error", "warning", "info"))), "")
+                        note(a.value, path.name, sev, msg)
+            elif isinstance(node, ast.Dict):
+                kv = {k.value: v for k, v in zip(node.keys, node.values)
+                      if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+                r = kv.get("rule")
+                if isinstance(r, ast.Constant) and isinstance(r.value, str) \
+                        and EMITTED_ID_RX.match(r.value):
+                    sv = kv.get("severity")
+                    note(r.value, path.name, sv.value if isinstance(sv, ast.Constant) else None,
+                         _msg_text(kv["message"]) if "message" in kv else "")
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                    and EMITTED_ID_RX.match(node.value):
+                note(node.value, path.name, None, "")
+        doc = ast.get_docstring(tree) or ""
+        for rid in list(found):
+            if found[rid]["file"] == path.name or rid in doc:
+                for m in re.finditer(rf"\b{re.escape(rid)}\b", doc):
+                    ctx = " ".join(doc[max(0, m.start() - 60): m.end() + 260].split())
+                    found[rid]["docs"].append((path.name, ctx))
+                    break
+    return found
+
+
+def _emitted_rule_chunks(have: set[str], notes: list[str]) -> list[Chunk]:
+    """Chunks for every rule ID some module emits that no YAML/docstring chunk covers yet."""
+    out: list[Chunk] = []
+    blurbs = {**_AUDIT_RULES, **_LINT_RULES}
+    for rid, d in sorted(_scan_emitted().items()):
+        fam = rid.split("_")[0]
+        fam = "RT" if re.match(r"RT\d", fam) else fam
+        cid = f"rt:{rid}" if fam == "RT" else f"rule:{rid}"
+        if cid in have or (rid[0] in "CW" and rid[1:].isdigit()):
+            continue
+        label, noun, where = _FAMILY.get(fam, (f"{d['file']}", "rule", f"Emitted by {d['file']}."))
+        sev = d["severity"]
+        parts = [f"{noun} {rid}." + (f" Severity {sev}." if sev else ""), where]
+        if rid in blurbs:
+            parts.append(blurbs[rid])
+        if d["docs"]:
+            parts.append("From the module docs: " + d["docs"][0][1])
+        if d["message"]:
+            parts.append("Example message: " + d["message"])
+        out.append(Chunk(cid, label, f"{noun} {rid}", _clip(" ".join(parts)), "rule"))
+    return out
 def _rt_chunks(notes: list[str]) -> list[Chunk]:
     from cnlp import rtlint
 
@@ -423,6 +564,38 @@ def _req_meta_chunks(base: Path, proj: str) -> list[Chunk]:
                   "requirement") for rid, m in meta.items()]
 
 
+def _param_chunks(base: Path, cfg: dict, proj: str, notes: list[str]) -> list[Chunk]:
+    """Expected key parameters (parameters.yaml in the config folder), one chunk per group."""
+    name = cfg.get("parameters")
+    if not name:
+        return []
+    p = base / str(name)
+    try:
+        data = yaml.safe_load(p.read_text("utf-8")) or {}
+    except (OSError, yaml.YAMLError) as e:
+        notes.append(f"parameters {name} unavailable: {e}")
+        return []
+    src = f"{proj} expected parameters ({name}); check with `cnlp audit`"
+    out: list[Chunk] = []
+    for group, label in (("tasks", "task priority and core"), ("sdkconfig", "sdkconfig values"),
+                         ("constants", "constants (#defines)"),
+                         ("driver_fields", "driver config fields"),
+                         ("derived", "derived values")):
+        g = data.get(group)
+        if not isinstance(g, dict) or not g:
+            continue
+        lines = []
+        for k, v in g.items():
+            if isinstance(v, dict):
+                v = ", ".join(f"{a} {b}" for a, b in v.items())
+            lines.append(f"{k}: {v}")
+        out.append(Chunk(f"param:{proj}:{group}", src, f"expected {label}", _clip(
+            f"Expected key parameters, {label} (from {data.get('source', name)}); "
+            "`cnlp audit` flags a differing value with a PARAM_* rule. " + "; ".join(lines) + "."),
+            "parameter"))
+    return out
+
+
 def _live_chunks(cfg_path: Path, proj: str, notes: list[str]) -> list[Chunk]:
     from cnlp import audit as audit_mod
     from cnlp import evidence as evidence_mod
@@ -509,6 +682,14 @@ def _phase_chunks(cfg: dict, proj: str, notes: list[str]) -> list[Chunk]:
                                f"{p.get('check', '')} GPIOs: "
                                f"{', '.join(map(str, p.get('gpios', []))) or 'none'}. Requirements: "
                                f"{', '.join(p.get('reqs', [])) or 'none'}."), "status"))
+        if p.get("common_problems"):
+            out.append(Chunk(f"status:{proj}:phase{p['n']}-watch", src,
+                             f"phase {p['n']} {p['name']} watch-list",
+                             _clip(f"Phase {p['n']} {p['name']} watch-list: what to watch out for, "
+                                   "common problems and mistakes in this phase. "
+                                   + ("This is the CURRENT phase. " if cur and cur["n"] == p["n"]
+                                      else "")
+                                   + "; ".join(map(str, p["common_problems"])) + "."), "status"))
     return out
 
 
@@ -540,7 +721,9 @@ def _tokens(text: str) -> list[str]:
         for t in subs:
             if t in _STOP:
                 continue
-            if len(t) > 3 and t.endswith("s") and not t.endswith("ss") and not t[-2].isdigit():
+            if len(t) > 4 and t.endswith("ies"):
+                t = t[:-3] + "y"  # priorities -> priority
+            elif len(t) > 3 and t.endswith("s") and not t.endswith("ss") and not t[-2].isdigit():
                 t = t[:-1]
             out.append(t)
     return out
@@ -561,6 +744,8 @@ class Index:
             df.update(t.keys())
         n = len(chunks)
         self._idf = {w: math.log(1 + (n - d + 0.5) / (d + 0.5)) for w, d in df.items()}
+        self._title_toks = [set(_tokens(c.title)) - {"gpio"} - {t for t in _tokens(c.title)
+                                                                 if t.isdigit()} for c in chunks]
         self._cmds = sorted((c for c in chunks if c.kind == "command"),
                             key=lambda c: -len(c.id))
 
@@ -593,6 +778,10 @@ class Index:
                         f + self.K1 * (1 - self.B + self.B * dl / self._avg))
             if s > 0 and how and c.kind == "command":
                 s *= 1.3  # "how do I ..." questions are usually about a command
+            if s > 0 and c.kind == "rule" and not how:
+                s *= 1.5  # board-concept questions ("no pull", "input-only") want the rule text
+            if s > 0 and c.kind == "pin" and not gpios and not (qset.keys() & self._title_toks[i]):
+                s *= 0.5  # a pin chunk only matters if the question names that pin or its role
             if s > 0 or ids:
                 tail = c.id.split(":", 2)[-1].lower()
                 head = tail.split("_")[0]
@@ -613,7 +802,7 @@ class Index:
 
 def build_index(cfg_path: Path | None = None, *, live: bool = True) -> Index:
     notes: list[str] = []
-    chunks = _doc_chunks(notes) + _command_chunks() + _rule_chunks(notes)
+    chunks = _doc_chunks(notes) + _module_doc_chunks(notes) + _command_chunks() + _rule_chunks(notes)
     if cfg_path is not None:
         cfg_path = Path(cfg_path).expanduser()
         try:
@@ -621,6 +810,7 @@ def build_index(cfg_path: Path | None = None, *, live: bool = True) -> Index:
             base = cfg_path.parent
             proj = base.name
             chunks += _spec_chunks(base / str(cfg.get("spec", "spec.cnl")), proj, notes)
+            chunks += _param_chunks(base, cfg, proj, notes)
             live_chunks: list[Chunk] = []
             if live:
                 try:
@@ -647,7 +837,7 @@ def build_index(cfg_path: Path | None = None, *, live: bool = True) -> Index:
 _GPIO_LIST = re.compile(
     r"gpios?\s*(\d+(?:\s*[-–]\s*\d+)?(?:\s*(?:,|/|and|or)\s*(?:and\s+|or\s+)?"
     r"\d+(?:\s*[-–]\s*\d+)?)*)", re.IGNORECASE)
-_RULE_ID = re.compile(r"\b(?:C\d+|W\d+|RT\d+(?:_[A-Z0-9]+)*|(?:LINT|AUDIT|STATUS|READBACK)_[A-Z_]+|"
+_RULE_ID = re.compile(r"\b(?:C\d+|W\d+|RT\d+(?:_[A-Z0-9]+)*|(?:LINT|AUDIT|STATUS|READBACK|PARAM|FSM)_[A-Z_]+|"
                       r"OWNER|OPEN_DRAIN_PULL|I2C_WEAK_PULL|FLOATING)\b")
 _REQ_ID = re.compile(r"\b[RF]\d+\b")
 _NUM = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
