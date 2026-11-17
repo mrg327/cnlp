@@ -109,7 +109,7 @@ def test_missing_period_and_bad_signal():
 
 
 def test_state_and_reset_errors():
-    assert "State machines aren't supported yet" in err(BASE + "state idle: every 5 s read sensor.\n")[0]["message"]
+    assert "needs a machine first" in err(BASE + "state idle: every 5 s do read sensor.\n")[0]["message"]
     assert "no 'gpio 7 is" in err(BASE + "gpio 7 is high at reset.\n")[0]["message"]
 
 
@@ -122,3 +122,50 @@ def test_assumptions():
     assert cnl.assumptions(m) == []
     a = cnl.assumptions(m, (ROOT / "examples/blinky/spec.cnl").read_text())
     assert {x["field"] for x in a} == {"features.deep_sleep", "features.jtag"}
+
+
+FSM = BASE + """
+machine sensor starts in idle.
+state idle: on button press go to measuring.
+state measuring: every 10 s do read sensor; on read ok go to idle;
+  after 3 read failed go to error.
+state error: on button press go to idle.
+state done.
+"""
+
+
+def test_machine_parse_and_round_trip():
+    m = cnl.parse(FSM)
+    (sm,) = m.state_machines
+    assert (sm.name, sm.start) == ("sensor", "idle")
+    assert [s.name for s in sm.states] == ["idle", "measuring", "error", "done"]
+    every, on, after = sm.states[1].transitions
+    assert (every.kind, every.period_ms, every.action) == ("every", 10000, "read_sensor")
+    assert (on.event, on.target) == ("read_ok", "idle")
+    assert (after.kind, after.count, after.event, after.target) == ("after", 3, "read_failed", "error")
+    assert sm.states[3].transitions == ()
+    text = cnl.render(m)
+    assert "state measuring: every 10 s do read sensor; on read ok go to idle; after 3 read failed go to error." in text
+    assert cnl.parse(text) == m
+    assert cnl.render(cnl.parse(text)) == text
+    from cnlp.manifest import from_dict
+    assert from_dict(m.to_dict()) == m
+
+
+def test_durations():
+    m = cnl.parse(BASE + "machine a starts in s.\nstate s: every 90 s do x; every 2 min do y; every 250 ms do z.\n")
+    assert [t.period_ms for t in m.state_machines[0].states[0].transitions] == [90000, 120000, 250]
+    assert "every 90 s do x; every 2 min do y; every 250 ms do z" in cnl.render(m)
+
+
+@pytest.mark.parametrize("bad, msg", [
+    ("machine a starts in s.\nstate s: on go go to t.\n", "reserved word"),
+    ("machine a starts in s.\nstate s: on x go t.\n", "go to STATE"),
+    ("machine a starts in s.\nstate s: every 5 q do x.\n", "every 10 s do"),
+    ("machine a starts in s.\nstate s: after 0 x go to t.\n", "at least 1"),
+    ("machine a starts in s.\nstate s: jump to t.\n", "starts with 'on'"),
+    ("machine a starts in S.\n", "lowercase"),
+    ("machine a.\n", "machine NAME starts in STATE"),
+])
+def test_machine_errors(bad, msg):
+    assert msg in err(BASE + bad)[0]["message"]

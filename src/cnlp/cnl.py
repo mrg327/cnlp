@@ -18,7 +18,7 @@ import re
 from lark import Lark, Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
 
-from cnlp.manifest import Features, Manifest, Pin
+from cnlp.manifest import Features, Manifest, Pin, State, StateMachine, Transition
 
 IDF_VERSION = "5.5.6"
 
@@ -247,10 +247,11 @@ def parse(text: str) -> Manifest:
     pins: list[Pin] = []
     resets: list[tuple[int, str, int, int]] = []
     seen: set[str] = set()
+    machines: list[dict] = []
 
     for stmt, line, col in stmts:
-        if re.match(r"state\b", stmt):
-            errors.append(_err(line, col, f"Line {line}: State machines aren't supported yet."))
+        if re.match(r"(state|machine)\b", stmt):
+            _parse_fsm_stmt(stmt, line, col, machines, errors)
             continue
         padded = "\n" * (line - 1) + " " * (col - 1) + stmt
         try:
@@ -309,7 +310,133 @@ def parse(text: str) -> Manifest:
         idf_version=IDF_VERSION,
         features=Features(**feat),  # type: ignore[arg-type]
         pins=tuple(pins),
+        state_machines=tuple(
+            StateMachine(m["name"], m["start"], tuple(m["states"])) for m in machines
+        ),
     )
+
+
+_RESERVED = {"go", "to", "on", "every", "after", "is", "with", "do"}
+_IDENT = re.compile(r"[a-z][a-z0-9_]*$")
+_UNIT_MS = {"ms": 1, "s": 1000, "min": 60000}
+
+
+def _fsm_name(word: str, what: str) -> str | None:
+    """Return an error message if ``word`` can't be a machine or state name."""
+    if word in _RESERVED:
+        return f"'{word}' is a reserved word and can't be a {what} name."
+    if not _IDENT.match(word):
+        return (f"{what} name '{word}' must be lowercase letters, digits and '_', "
+                "starting with a letter.")
+    return None
+
+
+def _fsm_phrase(words: list[str], what: str) -> tuple[str | None, str | None]:
+    """Normalise an event or action phrase to snake_case; return (value, error)."""
+    if not words:
+        return None, f"the {what} is missing."
+    for w in words:
+        if w in _RESERVED:
+            return None, f"'{w}' is a reserved word and can't be part of {what} '{' '.join(words)}'."
+        if not re.match(r"[a-z0-9][a-z0-9_-]*$", w):
+            return None, (f"{what} word '{w}' must be lowercase letters, digits, '-' or '_'.")
+    v = _snake(" ".join(words))
+    if not _IDENT.match(v):
+        return None, f"{what} '{' '.join(words)}' must start with a letter."
+    return v, None
+
+
+def _parse_transition(words: list[str]) -> tuple[Transition | None, str | None]:
+    def goto(rest: list[str], kind: str, count: int | None) -> tuple[Transition | None, str | None]:
+        if len(rest) < 3 or rest[-3:-1] != ["go", "to"]:
+            return None, f"'{kind}' transitions need 'go to STATE' at the end."
+        event, err = _fsm_phrase(rest[:-3], "event")
+        if err:
+            return None, err
+        target = rest[-1]
+        if (err := _fsm_name(target, "state")) is not None:
+            return None, err
+        return Transition(kind=kind, event=event, target=target, count=count), None
+
+    head = words[0]
+    if head == "on":
+        return goto(words[1:], "on", None)
+    if head == "after":
+        if len(words) < 2 or not re.match(r"[0-9]+$", words[1]) or int(words[1]) < 1:
+            return None, "'after' needs a whole number of at least 1, e.g. 'after 3 read failed go to error'."
+        return goto(words[2:], "after", int(words[1]))
+    if head == "every":
+        if (len(words) < 5 or not re.match(r"[0-9]+$", words[1]) or words[2] not in _UNIT_MS
+                or words[3] != "do"):
+            return None, ("'every' must look like 'every 10 s do read sensor' "
+                          "(units: ms, s or min).")
+        ms = int(words[1]) * _UNIT_MS[words[2]]
+        if ms < 1:
+            return None, "the period after 'every' must be more than zero."
+        action, err = _fsm_phrase(words[4:], "action")
+        if err:
+            return None, err
+        return Transition(kind="every", period_ms=ms, action=action), None
+    return None, f"a transition starts with 'on', 'every' or 'after', not '{head}'."
+
+
+def _parse_fsm_stmt(stmt: str, line: int, col: int, machines: list[dict], errors: list[dict]) -> None:
+    def fail(msg: str) -> None:
+        errors.append(_err(line, col, f"Line {line}: {msg}"))
+
+    text = " ".join(stmt.split())
+    if text.startswith("machine"):
+        m = re.match(r"machine (\S+) starts in (\S+)$", text)
+        if not m:
+            fail("expected 'machine NAME starts in STATE', e.g. 'machine sensor starts in idle'.")
+            return
+        for w, what in ((m.group(1), "machine"), (m.group(2), "state")):
+            if (err := _fsm_name(w, what)) is not None:
+                fail(err)
+                return
+        machines.append({"name": m.group(1), "start": m.group(2), "states": []})
+        return
+    head, colon, body = text.partition(":")
+    hw = head.split()
+    if len(hw) != 2 or hw[0] != "state":
+        fail("expected 'state NAME: TRANSITION; ...', e.g. 'state idle: on button press go to measuring'.")
+        return
+    if (err := _fsm_name(hw[1], "state")) is not None:
+        fail(err)
+        return
+    if not machines:
+        fail("a state needs a machine first; add 'machine NAME starts in STATE.' above it.")
+        return
+    transitions: list[Transition] = []
+    if colon:
+        for part in body.split(";"):
+            words = part.split()
+            if not words:
+                fail(f"state '{hw[1]}' has an empty transition (check for a stray ';' or ':').")
+                return
+            t, err = _parse_transition(words)
+            if err:
+                fail(f"state '{hw[1]}': {err}")
+                return
+            assert t is not None
+            transitions.append(t)
+    machines[-1]["states"].append(State(hw[1], tuple(transitions)))
+
+
+def _duration_text(ms: int) -> str:
+    for unit in ("min", "s"):
+        if ms % _UNIT_MS[unit] == 0:
+            return f"{ms // _UNIT_MS[unit]} {unit}"
+    return f"{ms} ms"
+
+
+def _transition_text(t: Transition) -> str:
+    if t.kind == "every":
+        return f"every {_duration_text(t.period_ms or 0)} do {(t.action or '').replace('_', ' ')}"
+    ev = (t.event or "").replace("_", " ")
+    if t.kind == "after":
+        return f"after {t.count} {ev} go to {t.target}"
+    return f"on {ev} go to {t.target}"
 
 
 def _replace(p: Pin, **kw: object) -> Pin:
@@ -400,6 +527,14 @@ def render(m: Manifest) -> str:
         if p.reset_level and p.gpio not in done:
             done.add(p.gpio)
             lines.append(f"gpio {p.gpio} is {p.reset_level} at reset.")
+    for sm in m.state_machines:
+        lines.append(f"machine {sm.name} starts in {sm.start}.")
+        for st in sm.states:
+            if st.transitions:
+                lines.append(f"state {st.name}: "
+                             + "; ".join(_transition_text(t) for t in st.transitions) + ".")
+            else:
+                lines.append(f"state {st.name}.")
     return "\n".join(lines) + "\n"
 
 

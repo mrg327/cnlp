@@ -79,7 +79,7 @@ The bridge is **controlled English**: a small, strict grammar that reads like En
 >
 > *Qwen rewrites it as controlled English:* `gpio 4 is input "button" with internal pull-up, wakes from deep sleep on low` `gpio 21 is i2c0 sda with external pull-up` `gpio 22 is i2c0 scl with external pull-up`
 
-- Qwen's only job here is free-form English → controlled English, constrained by a GBNF grammar so the output can't be malformed.
+- Qwen's only job here is free-form English → controlled English, constrained by a GBNF grammar so the output can't be malformed. This call uses no tools, because llama.cpp refuses a custom grammar together with tools.
 - A deterministic parser (Lark, or a small hand-written one) turns controlled English into the manifest. No model touches that step.
 - Controlled English is readable, so a person can confirm it at a glance, like reading `cdecl explain` output.
 
@@ -221,7 +221,7 @@ cdecl makes the hardest part of C syntax deterministic. The compiler and analyze
 - **Declaration-first workflow.** Qwen writes every type, struct and prototype as cdecl English (`declare handler as pointer to function (int) returning pointer to array 3 of int`). cdecl produces the C. Signatures are locked before any function body is written.
 - **Round trip.** English → `declare` → C → `explain` → English must come back unchanged, or the declaration is rejected.
 - **Extraction check on clean declarations.** ESP-IDF code is full of macros such as `IRAM_ATTR`, which cdecl can't parse. The engine first strips a configured list of known attribute macros, or extracts declarations from preprocessed output (`-E`), then runs `cdecl explain` and compares the English with the stated intent. Declarations it still can't parse are reported, never silently skipped.
-- **Grammar-constrained calls.** A GBNF grammar in llama.cpp forces cdecl tool calls into valid syntax.
+- **Validated tool arguments.** llama.cpp can't combine a custom GBNF grammar with tool calling (HTTP 400, verified 2026-11-17), so cdecl tool calls are constrained only by their JSON schema. The engine parses the cdecl English in each call and returns parse errors to the model.
 - **Compiler gate.** The project's own toolchain build with `-Wall -Wextra -Werror` on every change.
 - **Analyzers.** `idf.py clang-check` where it supports the pinned IDF version and target; otherwise `cppcheck` on the sources, plus `clang-tidy` on host builds of the logic with ESP-IDF calls stubbed out. The engine picks the path at setup and records it.
 - **Sanitizers.** Host-side tests built with `-fsanitize=address,undefined`.
@@ -482,7 +482,7 @@ These are first drafts of every interface the engine exposes, so an implementing
 
 ```ebnf
 spec        = { statement "." } ;
-statement   = pin_stmt | state_stmt | hw_stmt ;
+statement   = pin_stmt | machine_stmt | state_stmt | hw_stmt ;
 
 pin_stmt    = "gpio" INT "is" mode [ function ] [ role ] [ pull ] [ wake ] ;
 mode        = "input" | "output" | "open-drain" | periph ;
@@ -493,10 +493,11 @@ pull        = "with" ( "internal" | "external" | "off-board" ) ( "pull-up" | "pu
             | "with no pull" ;
 wake        = "wakes from deep sleep on" ( "low" | "high" ) ;
 
-state_stmt  = "state" NAME ":" transition { ";" transition } ;
+machine_stmt = "machine" NAME "starts in" NAME ;     (* declares a machine; later states belong to it *)
+state_stmt  = "state" NAME [ ":" transition { ";" transition } ] ;  (* no transitions: a final state *)
 transition  = trigger "go to" NAME
-            | "every" DURATION action
-            | "after" INT "failures go to" NAME ;
+            | "every" DURATION "do" action            (* periodic action; stays in the state *)
+            | "after" INT EVENT "go to" NAME ;        (* N occurrences of EVENT in this state; reset on leaving *)
 trigger     = "on" EVENT ;
 action      = WORD { WORD } ;                         (* "read sensor"; ends at ";" or "." *)
 
@@ -510,7 +511,16 @@ PERIPH      = ( "i2c" | "spi" | "uart" ) DIGIT ;      (* one token: "i2c0", neve
 EVENT       = WORD { WORD } ;                         (* "button press"; ends at "go to" *)
 NAME        = WORD ;                                  (* lowercase identifier, may contain "_" *)
 DURATION    = INT ( "ms" | "s" | "min" ) ;
-(* Reserved words, never part of EVENT, NAME or an action: "go", "to", "on", "every", "after", "is", "with" *)
+(* Reserved words, never part of EVENT, NAME or an action: "go", "to", "on", "every", "after", "is", "with", "do" *)
+```
+
+Events and actions are normalised to snake_case (`button press` becomes `button_press`); durations are stored in milliseconds. A counted `after` transition fires on the Nth occurrence of its event while the machine stays in the state, and the count resets when the state is left. Example:
+
+```
+machine sensor starts in idle.
+state idle: on button press go to measuring.
+state measuring: every 10 s do read sensor; on read ok go to idle; after 3 read failed go to error.
+state error: on button press go to idle.
 ```
 
 Features default to off and the console to `uart0`. A feature the request never mentions becomes an *assumption* and a completeness question at the intent gate.
@@ -621,6 +631,6 @@ These assumptions are untested. Phase 0 checks each one before the build depends
 - [ ] **Sandbox:** does the chosen sandbox (for example, `pi-permission-modes` with bubblewrap) actually block serial devices, `esptool` and `espefuse` on this machine? Try it with a deliberate attempt.
 - [ ] **Pi hook fields:** which input field holds the file path in Pi's `write` and `edit` tool calls for the installed version? The skeleton assumes `path`.
 - [ ] **Qwen budget:** with `--n-cpu-moe` on the 16 GB GPU, what speed and context size are usable, and how much system RAM does it need?
-- [ ] **Qwen grammar plus tools:** do GBNF-constrained output and tool calling work together for this model in the installed llama.cpp build?
+- [x] **Qwen grammar plus tools:** do GBNF-constrained output and tool calling work together for this model in the installed llama.cpp build? *No: "Cannot use custom grammar constraints with tools" (HTTP 400). Grammar alone works at ~114 tokens/s; it needs a terminator. See docs/PLAN.md.*
 - [ ] **Espressif QEMU:** which classic ESP32 peripherals and GPIO behaviors does it emulate well enough for host-side logic tests?
 - [ ] **CBMC and Frama-C:** can they process a sample pure-core function written in the project's C style?

@@ -1,0 +1,11 @@
+chip is esp32.
+module is esp32-wroom-32.
+board is devkit-v1.
+wifi is off.
+bluetooth is off.
+console is on uart0.
+gpio 4 is input "button" with internal pull-up.
+machine sensor starts in idle.
+state idle: on button press go to measuring.
+state measuring: every 10 s do read sensor; on read ok go to idle; after 3 read failed go to error.
+state error: on button press go to idle.

@@ -41,6 +41,44 @@
         }
       }
     },
-    "state_machines": {"type": "array"}
+    "state_machines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "start", "states"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "start": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "transitions"],
+              "properties": {
+                "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                "transitions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": {"enum": ["on", "after", "every"]},
+                      "event": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                      "target": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                      "count": {"type": "integer", "minimum": 1},
+                      "period_ms": {"type": "integer", "minimum": 1},
+                      "action": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

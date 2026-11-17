@@ -66,17 +66,53 @@ def cmd_check_pins(a: argparse.Namespace) -> int:
 
 
 def cmd_gen(a: argparse.Namespace) -> int:
-    from cnlp import codegen, manifest, rules
+    from cnlp import codegen, fsm, manifest, rules
 
     m = manifest.load(_manifest_path(a.project))
-    errors = [f for f in rules.check(m) if f.severity == "error"]
+    errors = [f for f in rules.check(m) + fsm.check(m) if f.severity == "error"]
     if errors:
-        _emit({"ok": False, "reason": "pin rules failed; run check-pins",
+        _emit({"ok": False, "reason": "pin or state-machine rules failed; run check-pins / check-fsm",
                "findings": [f.to_dict() for f in errors]})
         return 1
+    from cnlp import sync
+
     files = codegen.generate(m, a.project / "components" / "board")
+    sync.record(a.project, files)
     _emit({"ok": True, "files": files})
     return 0
+
+
+def cmd_check_fsm(a: argparse.Namespace) -> int:
+    from cnlp import fsm, manifest
+
+    m = manifest.load(_manifest_path(a.project))
+    findings = fsm.check(m)
+    errors = any(f.severity == "error" for f in findings)
+    _emit({"ok": not errors, "findings": [f.to_dict() for f in findings]})
+    return 1 if errors else 0
+
+
+def cmd_lint(a: argparse.Namespace) -> int:
+    from cnlp import lint
+
+    findings = lint.run(a.project)
+    errors = any(f.severity == "error" for f in findings)
+    _emit({"ok": not errors, "findings": [f.to_dict() for f in findings]})
+    return 1 if errors else 0
+
+
+def cmd_sync(a: argparse.Namespace) -> int:
+    from cnlp import sync
+
+    if a.apply:
+        result = sync.apply(a.project)
+    else:
+        result = sync.scan(a.project)
+        spec = sync.proposed_spec(a.project) if result.get("proposals") else None
+        if spec:
+            result["proposed_spec"] = spec
+    _emit(result)
+    return 0 if result.get("ok") else 1
 
 
 def cmd_gate(a: argparse.Namespace) -> int:
@@ -127,7 +163,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--manifest", type=Path)
     s.set_defaults(fn=cmd_check_pins)
 
+    sub.add_parser("check-fsm", help="check state machines").set_defaults(fn=cmd_check_fsm)
+
     sub.add_parser("gen", help="generate the board component").set_defaults(fn=cmd_gen)
+
+    sub.add_parser("lint", help="lint app code for pin, include and pure-core rules"
+                   ).set_defaults(fn=cmd_lint)
+
+    s = sub.add_parser("sync", help="detect hand edits to generated files")
+    s.add_argument("--apply", action="store_true", help="write the proposed spec.cnl")
+    s.set_defaults(fn=cmd_sync)
 
     s = sub.add_parser("gate", help="review and answer approval gates")
     gs = s.add_subparsers(dest="gate_cmd", required=True)

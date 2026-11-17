@@ -41,7 +41,7 @@ Each later spike runs just before the phase that needs it:
 
 | Spike | Before |
 | --- | --- |
-| Qwen budget, GBNF plus tool calling | Phase 2 |
+| Qwen budget, GBNF plus tool calling | Phase 2: **done 2026-11-17**, see below |
 | Sandbox, Pi hook fields | Phase 3 |
 | cdecl on ESP-IDF code, CBMC/Frama-C, QEMU | Phase 4 |
 
@@ -53,8 +53,36 @@ Verified end to end on the board: the flash broker refused an unapproved
 image, then flashed the approved one, and readback matched the manifest.
 64 tests pass.
 
-Not done yet: step 5 (lint), the interface gate, state machines, `cnlp sync`,
-Qwen, Pi, sandbox. The broker runs in-process, not outside a sandbox.
+Since the MVP: `cnlp gate review` (interactive), `cnlp lint` (step 5,
+tree-sitter), `cnlp sync` (hand edits to generated pins become proposed spec
+changes), and state machines (`machine`/`state` grammar, `cnlp check-fsm`,
+table-driven pure-C codegen with a host test under ASan/UBSan;
+`examples/fsm_demo` builds). 113 tests pass.
+
+Not done yet: Qwen translation (next), the interface gate, tests-before-code,
+Pi, sandbox. The broker runs in-process, not outside a sandbox.
+
+## Qwen spike results (2026-11-17)
+
+Server: llama-swap at `http://100.89.28.64:8080/v1` (from `~/.pi/agent/models.json`).
+Model `qwen-exec` = Qwen3.6 35B-A3B, thinking off, temp 0.7 / top_p 0.8 /
+top_k 20, 120K context; `qwen-plan` is the same model with thinking on.
+
+- **GBNF works** through llama-swap (`"grammar"` field), at about 114 tokens/s.
+  The grammar needs a terminator (`"END"`) and bounded repetition, or the
+  model loops until `max_tokens`. With a short system prompt and one example,
+  output is well-formed and fast (under 1 s once loaded).
+- **GBNF plus tools does not work:** llama.cpp returns HTTP 400 "Cannot use
+  custom grammar constraints with tools." Design change: the NL to controlled
+  English step is a plain grammar-constrained completion with no tools. Tool
+  calls are constrained only by their JSON schema, and the engine validates
+  any controlled English or cdecl English inside tool arguments (parse
+  errors go back to the model).
+- **Self-consistency is useful:** three runs at temp 0.7 disagreed on both
+  test requests, which is the signal for a clarifying question.
+- **Typical errors are caught downstream:** "button with nothing on the
+  board" came out as `with no pull`, which rule FLOATING rejects, so it
+  becomes a question instead of a silent default.
 
 ## Phase 1: engine core with no models
 

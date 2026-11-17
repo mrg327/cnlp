@@ -41,6 +41,31 @@ class Pin:
 
 
 @dataclass(frozen=True)
+class Transition:
+    """One line of a state: ``on``/``after`` change state, ``every`` runs an action."""
+
+    kind: str  # on | after | every
+    event: str | None = None  # snake_case; on/after
+    target: str | None = None  # next state; on/after
+    count: int | None = None  # after: consecutive occurrences needed
+    period_ms: int | None = None  # every
+    action: str | None = None  # every: snake_case action name
+
+
+@dataclass(frozen=True)
+class State:
+    name: str
+    transitions: tuple[Transition, ...] = ()
+
+
+@dataclass(frozen=True)
+class StateMachine:
+    name: str
+    start: str
+    states: tuple[State, ...] = ()
+
+
+@dataclass(frozen=True)
 class Manifest:
     chip: str
     module: str
@@ -48,12 +73,24 @@ class Manifest:
     idf_version: str
     features: Features
     pins: tuple[Pin, ...]
-    state_machines: tuple[Any, ...] = field(default=())
+    state_machines: tuple[StateMachine, ...] = field(default=())
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["pins"] = [{k: v for k, v in p.items() if v is not None} for p in d["pins"]]
-        d["state_machines"] = list(d["state_machines"])
+        d["state_machines"] = [
+            {
+                "name": sm.name,
+                "start": sm.start,
+                "states": [
+                    {"name": st.name,
+                     "transitions": [{k: v for k, v in asdict(t).items() if v is not None}
+                                     for t in st.transitions]}
+                    for st in sm.states
+                ],
+            }
+            for sm in self.state_machines
+        ]
         return d
 
     def to_yaml(self) -> str:
@@ -95,7 +132,18 @@ def from_dict(data: dict[str, Any]) -> Manifest:
         idf_version=str(data["idf_version"]),
         features=Features(**data["features"]),
         pins=tuple(Pin(**p) for p in data["pins"]),
-        state_machines=tuple(data.get("state_machines", [])),
+        state_machines=tuple(_machine(sm) for sm in data.get("state_machines", [])),
+    )
+
+
+def _machine(d: dict[str, Any]) -> StateMachine:
+    return StateMachine(
+        name=d["name"],
+        start=d["start"],
+        states=tuple(
+            State(name=st["name"], transitions=tuple(Transition(**t) for t in st.get("transitions", [])))
+            for st in d.get("states", [])
+        ),
     )
 
 
