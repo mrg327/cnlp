@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -273,3 +274,38 @@ def approved_image(project: Path, image_hash_: str | None) -> bool:
     if cur is None or image_hash_ != cur:
         return False
     return approved(project, "flash", _flash(project).hash)
+
+
+def review(
+    project: Path,
+    ask: Callable[[str], str] = input,
+    say: Callable[[str], None] = print,
+) -> int:
+    """Interactive review: show each pending gate in order and record the user's answer.
+
+    Returns 0 when every gate is approved, 1 when the user stops, or a gate is blocked
+    or left unapproved. `ask` and `say` are injectable for tests.
+    """
+    choices = {"a": "approve", "c": "change", "r": "reject", "q": None}
+    while True:
+        g = next_gate(project)
+        if g is None:
+            say("All gates are approved.")
+            return 0
+        say(f"\n== {g['title']} ==\n\n{g['summary'].rstrip()}\n")
+        if g["blocked"]:
+            say(f"Blocked: {g.get('reason') or 'this gate cannot be approved yet.'}")
+            return 1
+        pick = ""
+        while pick not in choices:
+            pick = ask("[a]pprove, [c]hange, [r]eject, [q]uit? ").strip().lower()[:1]
+        if choices[pick] is None:
+            say("Stopped; nothing recorded for this gate.")
+            return 1
+        prompt = "Your note, in plain English (optional): " if pick == "a" else \
+            "What should change, in plain English? "
+        note = ask(prompt).strip()
+        ok, msg = answer(project, g["id"], g["hash"], choices[pick], note)
+        say(msg)
+        if not ok or pick != "a":
+            return 1

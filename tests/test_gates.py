@@ -142,3 +142,24 @@ def test_log_append_only_supersedes_and_md(env):
     assert rows[0]["ts"][-6] in "+-"
     md = (p / "decisions.md").read_text()
     assert "| intent | approve |" in md and md.index("change") < md.rindex("approve")
+
+
+def test_review_approves_in_order_and_stops_when_blocked(env):
+    """Interactive review: approve intent, then stop at the flash gate (no build)."""
+    project, _ = env
+    answers = iter(["x", "a", "Looks right"])  # an invalid key first, then approve
+    said: list[str] = []
+    code = gates.review(project, ask=lambda _: next(answers), say=said.append)
+    assert code == 1
+    assert any("Recorded approval of the intent gate" in s for s in said)
+    assert any("Build the project first" in s for s in said)
+    entries = [json.loads(line) for line in (project / "decisions.jsonl").read_text().splitlines()]
+    assert [(e["gate"], e["choice"], e["note"]) for e in entries] == [
+        ("intent", "approve", "Looks right")]
+
+
+def test_review_quit_records_nothing(env):
+    project, _ = env
+    code = gates.review(project, ask=lambda _: "q", say=lambda _: None)
+    assert code == 1
+    assert not (project / "decisions.jsonl").exists()

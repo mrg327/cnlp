@@ -82,6 +82,11 @@ def cmd_gen(a: argparse.Namespace) -> int:
 def cmd_gate(a: argparse.Namespace) -> int:
     from cnlp import gates
 
+    if a.gate_cmd == "review":
+        if not sys.stdin.isatty():
+            _emit({"ok": False, "error": "gate review is interactive; use gate next / gate answer"})
+            return 2
+        return gates.review(a.project)
     if a.gate_cmd == "next":
         _emit(gates.next_gate(a.project, only=a.gate))
         return 0
@@ -126,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("gate", help="review and answer approval gates")
     gs = s.add_subparsers(dest="gate_cmd", required=True)
+    gs.add_parser("review", help="interactively review each pending gate in order")
     n = gs.add_parser("next")
     n.add_argument("--gate", dest="gate")
     an = gs.add_parser("answer")

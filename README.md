@@ -16,9 +16,9 @@ P=examples/blinky
 uv run cnlp --project $P translate      # spec.cnl -> .cnlp/manifest.yaml
 uv run cnlp --project $P check-pins     # chip + module rules
 uv run cnlp --project $P gen            # components/board/
-uv run cnlp --project $P gate next      # review; then: gate answer <id> <hash> approve "<note>"
+uv run cnlp --project $P gate review    # approve the intent gate interactively
 (cd $P && idf.py build)                 # ESP-IDF v5.5.6 environment
-uv run cnlp --project $P gate next      # flash gate shows the image hash
+uv run cnlp --project $P gate review    # flash gate shows the image hash
 uv run cnlp --project $P flash          # flashes only the approved image, then diffs readback
 ```
 
