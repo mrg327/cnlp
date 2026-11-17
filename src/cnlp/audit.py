@@ -301,6 +301,34 @@ def _snapshot(target: Path, sources: list[str], dest: Path) -> dict[str, Any]:
     return {"source": str(target), "files": len(files), "sha256": h.hexdigest()}
 
 
+def projects_root() -> Path:
+    """cnlp's `projects/` folder (configs live in the cnlp repo, never in the target)."""
+    return Path(__file__).resolve().parents[2] / "projects"
+
+
+def find_config(path: Path, root: Path | None = None) -> Path:
+    """Resolve what the user typed to an audit.yaml.
+
+    Accepts the yaml itself, a cnlp config folder (`projects/synth`), or the target
+    project directory (e.g. `~/projects/engr844_final_project`), which is matched
+    against each `projects/*/audit.yaml`'s `target`.
+    """
+    p = Path(path).expanduser()
+    if p.is_file():
+        return p
+    if (p / "audit.yaml").is_file():
+        return p / "audit.yaml"
+    root = root or projects_root()
+    want = p.resolve()
+    for cfg in sorted(root.glob("*/audit.yaml")):
+        target = (yaml.safe_load(cfg.read_text("utf-8")) or {}).get("target")
+        if target and Path(str(target)).expanduser().resolve() == want:
+            return cfg
+    raise AuditError(
+        f"No audit config for {p}. Create {root}/<name>/audit.yaml with "
+        f"'target: {p}' (see projects/synth/audit.yaml).")
+
+
 def audit(config_path: Path) -> dict[str, Any]:
     cfg_path = Path(config_path).expanduser()
     cfg = yaml.safe_load(cfg_path.read_text("utf-8")) or {}

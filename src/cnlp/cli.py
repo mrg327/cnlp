@@ -116,9 +116,11 @@ def cmd_check_fsm(a: argparse.Namespace) -> int:
 def cmd_audit(a: argparse.Namespace) -> int:
     from cnlp import audit
 
-    cfg = Path(a.config)
-    if cfg.is_dir():
-        cfg = cfg / "audit.yaml"
+    try:
+        cfg = audit.find_config(Path(a.config))
+    except audit.AuditError as e:
+        _emit({"ok": False, "error": str(e)})
+        return 2
     result = audit.audit(cfg)
     if a.save:
         audit.write_report(result, cfg)
@@ -212,7 +214,7 @@ def build_parser() -> argparse.ArgumentParser:
                    ).set_defaults(fn=cmd_lint)
 
     s = sub.add_parser("audit", help="read-only audit of an existing project (works on a snapshot)")
-    s.add_argument("config", help="projects/<name> or its audit.yaml")
+    s.add_argument("config", help="the project dir to audit, projects/<name>, or an audit.yaml")
     s.add_argument("--save", action="store_true", help="also write <name>/.cnlp/audit.json")
     s.set_defaults(fn=cmd_audit)
 

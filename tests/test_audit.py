@@ -133,3 +133,17 @@ def test_snapshot_hash_tracks_source_changes(tmp_path):
     (tgt / "main" / "bad.c").write_text((tgt / "main" / "bad.c").read_text() + "\n// edit\n")
     h2 = audit.audit(cfg)["snapshot"]
     assert h2["sha256"] != h1["sha256"] and h2["files"] == h1["files"]
+
+
+def test_find_config_by_target_dir(tmp_path):
+    target = tmp_path / "synth"
+    (target / "main").mkdir(parents=True)
+    cfgdir = tmp_path / "projects" / "synth"
+    cfgdir.mkdir(parents=True)
+    (cfgdir / "audit.yaml").write_text(f"target: {target}\nsources: [main]\n")
+    root = tmp_path / "projects"
+    assert audit.find_config(target, root=root) == cfgdir / "audit.yaml"
+    assert audit.find_config(cfgdir, root=root) == cfgdir / "audit.yaml"
+    assert audit.find_config(cfgdir / "audit.yaml", root=root) == cfgdir / "audit.yaml"
+    with pytest.raises(audit.AuditError, match="No audit config"):
+        audit.find_config(tmp_path / "other", root=root)
