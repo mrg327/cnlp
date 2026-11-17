@@ -1,0 +1,28 @@
+# Synth pin plan, transcribed from engr844_final_project/docs/spec.md "Wiring diagram" (2026-11-17).
+# I2S pins are plain outputs here until the language has an i2s peripheral.
+chip is esp32.
+module is esp32-wroom-32.
+board is devkit-v1.
+wifi is off.
+bluetooth is off.
+console is on uart0.
+gpio 16 is output "row 1" with no pull.
+gpio 17 is output "row 2" with no pull.
+gpio 18 is output "row 3" with no pull.
+gpio 19 is output "row 4" with no pull.
+gpio 4 is output "row 5" with no pull.
+gpio 34 is input "col 1" with external pull-up.
+gpio 35 is input "col 2" with external pull-up.
+gpio 36 is input "col 3" with external pull-up.
+gpio 39 is input "col 4" with external pull-up.
+gpio 23 is input "col 5" with external pull-up.
+gpio 32 is input "enc a" with internal pull-up.
+gpio 13 is input "enc b" with internal pull-up.
+gpio 27 is input "enc sw" with internal pull-up.
+gpio 21 is i2c0 sda with off-board pull-up.
+gpio 22 is i2c0 scl with off-board pull-up.
+gpio 26 is output "i2s bclk" with no pull.
+gpio 25 is output "i2s lrc" with no pull.
+gpio 33 is output "i2s din" with no pull.
+gpio 14 is output "probe audio" with no pull.
+gpio 2 is output "probe scan" with no pull.

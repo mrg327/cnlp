@@ -1,0 +1,745 @@
+# Evaluation corpus for the plain-English -> controlled-English translator.
+# Phrasings were brainstormed with the local Qwen model (scripts/gen_corpus.py),
+# then filtered, rewritten and labelled by hand.
+
+# ---------------------------------------------------------------- clear
+- id: clear-001
+  category: clear
+  request: "There's an LED on GPIO 25 and a push button on GPIO 4 wired to ground, nothing else on the board. Use the chip's internal pull-up for the button, no Wi-Fi or Bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 25 is output "led" with no pull.
+    gpio 4 is input "button" with internal pull-up.
+  notes: "Canonical case; the lead example made explicit about the pull."
+
+- id: clear-002
+  category: clear
+  request: "esp32 button gpio13 input int pullup, led gpio14 output. no wifi no bt"
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 13 is input "button" with internal pull-up.
+    gpio 14 is output "led" with no pull.
+  notes: "Terse, abbreviated, 'int pullup'."
+
+- id: clear-003
+  category: clear
+  request: "hey can u help me with esp32 firmware? i have a relay on D25 (output) and a limit switch on IO26 that goes to ground, enable the internal pullup for it. wifi is off, bluetooth off thx!"
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 25 is output "relay" with no pull.
+    gpio 26 is input "limit switch" with internal pull-up.
+  notes: "Chatty, mixed pin-name styles (D25 / IO26). Qwen produced this register well."
+
+- id: clear-004
+  category: clear
+  request: "Pin 32 reads a door sensor that has a 10k resistor on the board pulling it up to 3.3V. Pin 33 drives a buzzer. Wi-Fi and Bluetooth are not used."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 32 is input "door sensor" with external pull-up.
+    gpio 33 is output "buzzer" with no pull.
+  notes: "'pin N' style; external pull-up stated as a resistor on the board."
+
+- id: clear-005
+  category: clear
+  request: "I2C temperature sensor on GPIO21 (SDA) and GPIO22 (SCL). The breakout board already has 4.7k pull-ups on both lines. No Wi-Fi, no Bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 21 is i2c0 sda with off-board pull-up.
+    gpio 22 is i2c0 scl with off-board pull-up.
+  notes: "Pull-ups on the sensor breakout map to 'off-board pull-up'."
+
+- id: clear-006
+  category: clear
+  request: "Hooking up a pot to GPIO34 for analog reading, nothing else, wifi disabled and bluetooth disabled."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 34 is input adc "pot" with no pull.
+  notes: "Analog input needs no pull; GPIO34 is ADC1 and input-only so it is valid. Tests that 'no pull' is chosen for ADC, not a question."
+
+- id: clear-007
+  category: clear
+  request: "gpio27 output for a green led, gpio26 output for a red led, gpio25 output for a blue led. They are all active high with a resistor in series. Nothing else connected, wifi bt off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 27 is output "green led" with no pull.
+    gpio 26 is output "red led" with no pull.
+    gpio 25 is output "blue led" with no pull.
+  notes: "Several outputs; order should follow the request."
+
+- id: clear-008
+  category: clear
+  request: "I want a panic button on GPIO 14 that wakes the board from deep sleep when pressed. The button goes between the pin and ground and I have a 10k pull-up resistor on the board. Wi-Fi off, Bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    deep sleep is on.
+    console is on uart0.
+    gpio 14 is input "panic button" with external pull-up wakes from deep sleep on low.
+  notes: "Wake level is derived from the wiring (button to ground, pull-up), so no question is needed. GPIO 14 is RTC-capable."
+
+- id: clear-009
+  category: clear
+  request: "Pls make firmware: button A on gpio 18 (internal pull-up), button B on gpio 19 (internal pull-up), buzzer on gpio 23. Both buttons connect to ground. No radio stuff."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 18 is input "button a" with internal pull-up.
+    gpio 19 is input "button b" with internal pull-up.
+    gpio 23 is output "buzzer" with no pull.
+  notes: "'No radio stuff' means wifi and bluetooth off."
+
+- id: clear-010
+  category: clear
+  request: "i am make project, esp32. pin 16 is for motor relay, output. pin 17 is switch to ground and i use internal pull up resistor. no wifi, no bluetooth, i not use serial debug."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on nothing.
+    gpio 16 is output "motor relay" with no pull.
+    gpio 17 is input "switch" with internal pull-up.
+  notes: "Non-native English; console explicitly unused. GPIO 16/17 are ordinary GPIOs on WROOM (no PSRAM)."
+
+- id: clear-011
+  category: clear
+  request: "Wi-Fi connected sensor node: soil moisture probe analog out on GPIO 32, status LED on GPIO 2... actually no, put the LED on GPIO 23. Wi-Fi is on, Bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is on.
+    bluetooth is off.
+    console is on uart0.
+    gpio 32 is input adc "soil moisture" with no pull.
+    gpio 23 is output "status led" with no pull.
+  notes: "Self-correction mid-sentence (2 -> 23); GPIO 32 is ADC1 so Wi-Fi is fine. A translator that keeps GPIO 2 is wrong."
+
+- id: clear-012
+  category: clear
+  request: "UART2 to a GPS: its TX goes to GPIO 16 on the ESP and the ESP's TX is GPIO 17. They're plain 3.3V push-pull lines. Wifi and BT off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 16 is uart2 rx with no pull.
+    gpio 17 is uart2 tx with no pull.
+  notes: "Direction trap: the GPS TX connects to the ESP RX. Tests that signals are mapped by the ESP's side."
+
+- id: clear-013
+  category: clear
+  request: "button on IO4 to ground w/ internal pullup that triggers an interrupt on press, and an LED on IO25. Wifi off bt off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 4 is input interrupt "button" with internal pull-up.
+    gpio 25 is output "led" with no pull.
+  notes: "'triggers an interrupt' selects the interrupt function."
+
+- id: clear-014
+  category: clear
+  request: "Need an SPI display-less sensor: MOSI 23, MISO 19, SCLK 18, CS 5 on SPI2... wait, CS should be 15. Nothing else, no wifi, no bluetooth. Strapping pin levels: GPIO 15 is high at reset since the sensor's CS idles high."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 23 is spi2 mosi with no pull.
+    gpio 19 is spi2 miso with no pull.
+    gpio 18 is spi2 sclk with no pull.
+    gpio 15 is spi2 cs with no pull.
+    gpio 15 is high at reset.
+  notes: "Self-correction, and a strapping pin whose reset level is stated so W4 stays quiet."
+
+- id: clear-015
+  category: clear
+  request: "Float switch on GPIO 22 connects to ground when the tank is empty; I put an external 10k pull-up on it. Pump relay on GPIO 21, active high. Wifi and bluetooth are not used and neither is the USB serial console."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on nothing.
+    gpio 22 is input "float switch" with external pull-up.
+    gpio 21 is output "pump relay" with no pull.
+  notes: "Console off is stated, so a clear case."
+
+# ---------------------------------------------------------------- ambiguous
+- id: amb-001
+  category: ambiguous
+  request: "esp32, push button on GPIO 4 and an LED on GPIO 25. Turn the LED on when the button is pressed."
+  expected_questions: ["pull for the button", "button active level"]
+  notes: "Classic: input with no pull or wiring stated."
+
+- id: amb-002
+  category: ambiguous
+  request: "firmware for esp32 reading bme280 on the usual i2c pins and printing to serial"
+  expected_questions: ["which pins for I2C", "pull-ups for I2C"]
+  notes: "'The usual I2C pins' must not be silently resolved to 21/22 without confirming; pull-ups also unstated."
+
+- id: amb-003
+  category: ambiguous
+  request: "Read a light sensor on analog pin 25 and send the value to my server."
+  expected_questions: ["Wi-Fi in use", "ADC2 conflict with Wi-Fi"]
+  notes: "Sending to a server implies Wi-Fi, and GPIO 25 is ADC2. The translator must surface the conflict, not choose."
+
+- id: amb-004
+  category: ambiguous
+  request: "button on d4, led on d5. i dont know if button is active low or high"
+  expected_questions: ["button active level", "pull for the button"]
+  notes: "The user admits uncertainty. D5 is also a strapping pin with no reset level."
+
+- id: amb-005
+  category: ambiguous
+  request: "Blink an LED when I press the button."
+  expected_questions: ["which pin for the LED", "which pin for the button", "pull for the button"]
+  notes: "No pins at all."
+
+- id: amb-006
+  category: ambiguous
+  request: "hi! i have an esp32 dev kit and want to light a led on pin 25 based on a soil moisture sensor. also added a button but idk if it needs pullup or pulldown, maybe just pullup?"
+  expected_questions: ["soil sensor pin", "soil sensor analog or digital", "button pin"]
+  notes: "Qwen-style chatty; the sensor and button pin are missing and the pull is a guess."
+
+- id: amb-007
+  category: ambiguous
+  request: "ESP32 with an OLED on I2C and a temp sensor on I2C too, plus a button that wakes it from sleep."
+  expected_questions: ["which pins for I2C", "pull-ups for I2C", "button pin", "pull for the button"]
+  notes: "Two I2C devices on one bus; button pin unstated."
+
+- id: amb-008
+  category: ambiguous
+  request: "I'm reading a battery voltage with an ADC on pin 4 and posting it over wifi. Also a relay on pin 16."
+  expected_questions: ["ADC2 conflict with Wi-Fi", "move the ADC pin"]
+  notes: "Wi-Fi is stated, so the real question is how to resolve the ADC2 conflict; the translator must not invent a pin."
+
+- id: amb-009
+  category: ambiguous
+  request: "gpio25 button, io25 led. no resistor info. no wifi"
+  expected_questions: ["which pin for the LED or button", "pull for the button"]
+  notes: "Two roles on one pin by apparent typo; the translator must ask, not emit two statements."
+
+- id: amb-010
+  category: ambiguous
+  request: "Door sensor on D14 reports when the door opens. Siren on 27."
+  expected_questions: ["pull for the door sensor", "door sensor active level"]
+  notes: "Reed switch wiring unstated."
+
+- id: amb-011
+  category: ambiguous
+  request: "i need esp32 code for led and button and sensor please"
+  expected_questions: ["pins for all three", "sensor type and interface", "pull for the button"]
+  notes: "Nearly empty request."
+
+- id: amb-012
+  category: ambiguous
+  request: "Wake the ESP32 from deep sleep with a pushbutton on pin 33, then blink an LED on 25."
+  expected_questions: ["pull for the button", "wake level"]
+  notes: "Valid RTC pin, but pull and wake level are unknown."
+
+- id: amb-013
+  category: ambiguous
+  request: "Use the default UART pins for a serial sensor and keep the debug console working."
+  expected_questions: ["which UART", "which pins"]
+  notes: "'Default pins' are GPIO 1/3 on UART0, which conflict with the console; the translator should ask."
+
+- id: amb-014
+  category: ambiguous
+  request: "Put a potentiometer on one of the analog pins and an led on a free pin."
+  expected_questions: ["which pin for the pot", "which pin for the LED"]
+  notes: "'A free pin' is a choice the user must make or confirm."
+
+- id: amb-015
+  category: ambiguous
+  request: "Two buttons, GPIO 18 and GPIO 19, each toggle a relay on 23 and 21. They're wired between the pin and 3.3V."
+  expected_questions: ["pull-down for the buttons"]
+  notes: "Wired to 3.3 V means active high but whether a pull-down resistor exists is unstated; the internal pull-down is a choice."
+
+# ---------------------------------------------------------------- rule_violation
+- id: rule-001
+  category: rule_violation
+  request: "Drive a relay from GPIO 34. No Wi-Fi, no Bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 34 is output "relay" with no pull.
+  expected_rules: ["C2"]
+  notes: "GPIO 34 is input-only."
+
+- id: rule-002
+  category: rule_violation
+  request: "Button on pin 35 to ground, turn on the internal pull-up for it. Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 35 is input "button" with internal pull-up.
+  expected_rules: ["C2"]
+  notes: "GPIO 35 has no pull hardware."
+
+- id: rule-003
+  category: rule_violation
+  request: "put the status LED on GPIO 7, no wifi, no bluetooth"
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 7 is output "status led" with no pull.
+  expected_rules: ["C3", "W1"]
+  notes: "Flash pin. The translator must translate faithfully; the engine rejects."
+
+- id: rule-004
+  category: rule_violation
+  request: "Siren relay on IO20, wifi and bt off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 20 is output "siren relay" with no pull.
+  expected_rules: ["C1"]
+  notes: "GPIO 20 is not bonded out on the ESP32."
+
+- id: rule-005
+  category: rule_violation
+  request: "i want to read a battery voltage on analog pin 4 while wifi is on and uploading to my server. bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is on.
+    bluetooth is off.
+    console is on uart0.
+    gpio 4 is input adc "battery" with no pull.
+  expected_rules: ["C10"]
+  notes: "ADC2 with Wi-Fi."
+
+- id: rule-006
+  category: rule_violation
+  request: "I wired a button to GPIO 12 with an external pull-up resistor to 3.3V; the other side goes to ground. wifi off bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 12 is input "button" with external pull-up.
+  expected_rules: ["W3"]
+  notes: "An external pull-up on MTDI breaks boot on 3.3 V flash modules."
+
+- id: rule-007
+  category: rule_violation
+  request: "Wake the board from deep sleep with a button on GPIO 5 (10k pull-up on the board, button to ground). Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    deep sleep is on.
+    console is on uart0.
+    gpio 5 is input "button" with external pull-up wakes from deep sleep on low.
+  expected_rules: ["C14"]
+  notes: "GPIO 5 is not RTC-capable."
+
+- id: rule-008
+  category: rule_violation
+  request: "hey so i want the LED on GPIO 1 but i still want to see the serial console for debugging, is that ok? wifi off bt off"
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 1 is output "led" with no pull.
+  expected_rules: ["C12"]
+  notes: "GPIO 1 is UART0 TX. The user asks a question; the translation is still a faithful statement and the engine raises it."
+
+- id: rule-009
+  category: rule_violation
+  request: "I2C sensor on 21 and 22, I don't have any resistors, just wire it straight. No wifi or bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 21 is i2c0 sda with no pull.
+    gpio 22 is i2c0 scl with no pull.
+  expected_rules: ["OPEN_DRAIN_PULL"]
+  notes: "'No resistors' must become 'no pull', not an invented pull-up."
+
+- id: rule-010
+  category: rule_violation
+  request: "Use GPIO 37 as an input for the hall switch with a 10k pull-up resistor on the board. No wifi, no bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 37 is input "hall switch" with external pull-up.
+  expected_rules: ["W5"]
+  notes: "GPIO 37 exists on the chip but not on the WROOM-32 module."
+
+- id: rule-011
+  category: rule_violation
+  request: "LED on pin 25 and also the buzzer on pin 25. Wifi off bluetooth off."
+  expected_rules: ["OWNER"]
+  notes: "Two roles on one pin. The parser itself rejects duplicate pin statements, so there is no expected_spec; the translator should surface the clash rather than emit it silently. Contrast with amb-009, where the clash looks like a typo."
+
+- id: rule-012
+  category: rule_violation
+  request: "Interrupt on GPIO 36 from a switch with an external pull-up, and a pot on GPIO 39 read with the ADC. Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 36 is input interrupt "switch" with external pull-up.
+    gpio 39 is input adc "pot" with no pull.
+  expected_rules: ["C11"]
+  notes: "Known ESP32 erratum: GPIO 36/39 interrupts while any ADC is in use."
+
+- id: rule-013
+  category: rule_violation
+  request: "Want an audio DAC output on GPIO 27 for a speaker. wifi bt off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 27 is output dac "speaker" with no pull.
+  expected_rules: ["C15"]
+  notes: "Only GPIO 25 and 26 have a DAC."
+
+- id: rule-014
+  category: rule_violation
+  request: "A plain button on GPIO 13 as input. There's no resistor and the other leg is just left in the air when not pressed (it connects to 3.3V when pressed). Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 13 is input "button" with no pull.
+  expected_rules: ["FLOATING"]
+  notes: "Floating input; the request states the wiring fully, so the translator must say 'no pull' and let the engine flag it."
+
+- id: rule-015
+  category: rule_violation
+  request: "I'm using a JTAG debugger and I also hooked a button to GPIO 14 with a pull-up resistor on the board. Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    jtag is on.
+    console is on uart0.
+    gpio 14 is input "button" with external pull-up.
+  expected_rules: ["C13"]
+  notes: "JTAG pins 12-15 conflict (warning)."
+
+- id: rule-016
+  category: rule_violation
+  request: "Use GPIOs 9 and 10 as two extra outputs for LEDs, I need the pins and those are free in the datasheet. Wifi off, bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 9 is output "led 1" with no pull.
+    gpio 10 is output "led 2" with no pull.
+  expected_rules: ["C3", "W1"]
+  notes: "The user's justification is wrong; the translator must not 'fix' pins silently."
+
+# ---------------------------------------------------------------- state_machine
+- id: fsm-001
+  category: state_machine
+  request: "Button on GPIO 4 (to ground, internal pull-up). Each press starts a measurement. While measuring, read the sensor every 10 seconds; once a read is ok go back to idle, and if 3 reads fail go to an error state. A button press in error goes back to idle. Wi-Fi and Bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 4 is input "button" with internal pull-up.
+    machine sensor starts in idle.
+    state idle: on button press go to measuring.
+    state measuring: every 10 s do read sensor; on read ok go to idle; after 3 read failed go to error.
+    state error: on button press go to idle.
+  notes: "The fsm_demo example in prose; the machine name is a free choice, graders should not require 'sensor'."
+
+- id: fsm-002
+  category: state_machine
+  request: "Lamp with an LED on GPIO 25 and a button on GPIO 13 (internal pull-up). It starts off. Press the button to turn it on, press again to turn it off. Radios off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 25 is output "led" with no pull.
+    gpio 13 is input "button" with internal pull-up.
+    machine lamp starts in off.
+    state off: on button press go to lit.
+    state lit: on button press go to off.
+  notes: "Simplest toggle."
+
+- id: fsm-003
+  category: state_machine
+  request: "pump on GPIO 21 (relay, output), start button on GPIO 14 with external pull-up. when i press start, it runs; after 30 secs it should stop by itself (timeout). Also press stop = same button to stop earlier. no wifi/bt"
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 21 is output "pump" with no pull.
+    gpio 14 is input "start button" with external pull-up.
+    machine pump starts in stopped.
+    state stopped: on button press go to running.
+    state running: on button press go to stopped; on timeout go to stopped.
+  notes: "A 30 s timeout cannot be written as 'after 30 s' in this grammar; 'on timeout' is the only expressible form. Acceptable alternatives: an event named after the timeout. Graders should only check structure."
+
+- id: fsm-004
+  category: state_machine
+  request: "Door alarm: reed switch on GPIO 32 with internal pull-up, siren on GPIO 33. System is disarmed at start. A button on GPIO 14 (external pull-up) arms it. When armed, if the door opens go to alarm. In alarm the siren is on until the button is pressed, which disarms it. No wifi, no bluetooth."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 32 is input "reed switch" with internal pull-up.
+    gpio 33 is output "siren" with no pull.
+    gpio 14 is input "button" with external pull-up.
+    machine alarm starts in disarmed.
+    state disarmed: on button press go to armed.
+    state armed: on door open go to alarm; on button press go to disarmed.
+    state alarm: on button press go to disarmed.
+  notes: "Three states, events from two inputs."
+
+- id: fsm-005
+  category: state_machine
+  request: "esp32, button gpio25 pulled up internally. connect: try; if fails 5 times -> give up and stay in failed. press the button to try again. leds not needed, radios off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 25 is input "button" with internal pull-up.
+    machine link starts in connecting.
+    state connecting: on connect ok go to connected; after 5 connect failed go to failed.
+    state connected.
+    state failed: on button press go to connecting.
+  notes: "Retry counter ('after 5 ...'); 'connected' has no transitions and is a legitimate final state per the grammar."
+
+- id: fsm-006
+  category: state_machine
+  request: "Heater relay on GPIO 26. Button on GPIO 4 to ground with the internal pull-up cycles the mode: off, then low, then high, then back to off. In low mode, check the temperature every 5 seconds. Radios off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 26 is output "heater relay" with no pull.
+    gpio 4 is input "button" with internal pull-up.
+    machine heater starts in off.
+    state off: on button press go to low.
+    state low: every 5 s do check temperature; on button press go to high.
+    state high: on button press go to off.
+  notes: "Cycling modes plus a periodic action in one state."
+
+- id: fsm-007
+  category: state_machine
+  request: "Sleep-based logger: button on GPIO 33 (10k external pull-up) wakes it. After waking it samples the sensor once every 2 seconds; when the sample is done it goes back to sleep. If sampling fails twice, it goes to a fault state until the button is pressed again. Deep sleep is used, wifi and bluetooth off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    deep sleep is on.
+    console is on uart0.
+    gpio 33 is input "button" with external pull-up wakes from deep sleep on low.
+    machine logger starts in sleeping.
+    state sleeping: on button press go to sampling.
+    state sampling: every 2 s do take sample; on sample done go to sleeping; after 2 sample failed go to fault.
+    state fault: on button press go to sleeping.
+  notes: "Combines wake pin with retries and a periodic action."
+
+- id: fsm-008
+  category: state_machine
+  request: "traffic light: red on 25, yellow on 26, green on 27, all outputs. red for 20 s, then green for 15 s, then yellow for 3 s, then repeat. Wifi and bt off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 25 is output "red" with no pull.
+    gpio 26 is output "yellow" with no pull.
+    gpio 27 is output "green" with no pull.
+    machine light starts in red.
+    state red: on red done go to green.
+    state green: on green done go to yellow.
+    state yellow: on yellow done go to red.
+  notes: "The grammar has no 'after N s go to' timeout form, only counted events, so durations (20 s, 15 s, 3 s) cannot be encoded as stated. A faithful translator should either use done-events and ask how the durations are produced, or mention the limitation. Graders should check structure only and expect a question about timing."
+
+- id: fsm-009
+  category: state_machine
+  request: "Smart plug: relay on GPIO 16, button on GPIO 17 with internal pull-up. Press once: on. Press again: off. If the button is pressed while the relay is on and the load is overheating (overheat event), go to a locked state. Locked clears when the button is pressed. Wifi off, BT off."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 16 is output "relay" with no pull.
+    gpio 17 is input "button" with internal pull-up.
+    machine plug starts in off.
+    state off: on button press go to lit.
+    state lit: on button press go to off; on overheat go to locked.
+    state locked: on button press go to off.
+  notes: "Convoluted prose; the named 'overheat event' becomes an event with no pin behind it."
+
+- id: fsm-010
+  category: state_machine
+  request: "Two-button door opener: open button on GPIO 18, close button on GPIO 19, both to ground with internal pull-ups; motor relay on GPIO 23 for opening and GPIO 22 for closing. Door starts closed. Press open: opening. When the open limit is reached: open. Press close: closing. When the close limit is reached: closed. If the motor is overloaded 3 times while opening, go to blocked. No radios."
+  expected_spec: |
+    chip is esp32.
+    module is esp32-wroom-32.
+    board is devkit-v1.
+    wifi is off.
+    bluetooth is off.
+    console is on uart0.
+    gpio 18 is input "open button" with internal pull-up.
+    gpio 19 is input "close button" with internal pull-up.
+    gpio 23 is output "open relay" with no pull.
+    gpio 22 is output "close relay" with no pull.
+    machine door starts in closed.
+    state closed: on open button press go to opening.
+    state opening: on open limit go to open; after 3 overload go to blocked.
+    state open: on close button press go to closing.
+    state closing: on close limit go to closed.
+    state blocked: on close button press go to closing.
+  notes: "Long, multi-state; 'blocked' escape is the translator's inference only if stated, here added to avoid a dead end. Graders should check for the stated transitions and not penalise an extra escape from blocked."
+
+# ---------------------------------------------------------------- out_of_scope
+- id: oos-001
+  category: out_of_scope
+  request: "Servo on GPIO 25, set the PWM frequency to 50 Hz and use a 7.5% duty cycle to centre it."
+  expected_questions: ["PWM frequency and duty cannot be stated", "pin only: output with pwm function"]
+  notes: "The language can say 'gpio 25 is output pwm' but not frequency or duty. The translator must not invent a 50 Hz statement."
+
+- id: oos-002
+  category: out_of_scope
+  request: "Connect to wifi ssid 'HomeNet' with password 'hunter2' and publish the temperature to mqtt topic home/temp every 5 seconds."
+  expected_questions: ["Wi-Fi credentials are out of scope", "MQTT topic is out of scope"]
+  notes: "Only 'wifi is on' is expressible. Credentials must never be copied into the spec."
+
+- id: oos-003
+  category: out_of_scope
+  request: "Drive an SSD1306 OLED on I2C and draw a bitmap at x=10, y=20 with a custom font."
+  expected_questions: ["display drawing is out of scope", "I2C pins and pull-ups"]
+  notes: "The I2C part is partly expressible but pins are not stated, so a question is also needed."
+
+- id: oos-004
+  category: out_of_scope
+  request: "calibrate the temperature sensor with temp = (raw - 200) * 0.5 + offset and show it"
+  expected_questions: ["calibration maths is out of scope", "sensor type and pin"]
+  notes: "Pure application logic; no pin facts at all."
+
+- id: oos-005
+  category: out_of_scope
+  request: "Make the LED on GPIO 25 fade smoothly at 5 kHz PWM with 12-bit resolution, and log the duty cycle over BLE every second."
+  expected_questions: ["PWM frequency and resolution cannot be stated", "BLE logging is out of scope"]
+  notes: "Mixed: output with pwm is expressible; frequency, resolution and BLE logging are not."

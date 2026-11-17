@@ -48,6 +48,27 @@ def cmd_translate(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_spec(a: argparse.Namespace) -> int:
+    from cnlp import llm, nl
+
+    request = Path(a.file).read_text() if a.file else a.request
+    if not request:
+        _emit({"ok": False, "error": "Give a request in quotes, or --file request.md"})
+        return 2
+    try:
+        r = nl.translate(request, n=a.n, board=a.board)
+    except llm.LlmError as e:
+        _emit({"ok": False, "error": str(e)})
+        return 2
+    a.project.mkdir(parents=True, exist_ok=True)
+    nl.write_project(a.project, request, r)
+    _emit({"ok": r.ok, "agreed": r.agreed, "spec": str(a.project / "spec.cnl"),
+           "questions": r.questions, "assumptions": r.assumptions,
+           "next": "Answer the questions by editing spec.cnl, then run `cnlp translate` "
+                   "and `cnlp gate review`."})
+    return 0 if r.ok else 1
+
+
 def cmd_render(a: argparse.Namespace) -> int:
     from cnlp import cnl, manifest
 
@@ -156,6 +177,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("translate", help="controlled English -> manifest")
     s.add_argument("file", nargs="?")
     s.set_defaults(fn=cmd_translate)
+
+    s = sub.add_parser("spec", help="plain English -> spec.cnl via the local model")
+    s.add_argument("request", nargs="?")
+    s.add_argument("--file")
+    s.add_argument("-n", type=int, default=3, help="samples for self-consistency")
+    s.add_argument("--board", default="devkit-v1")
+    s.set_defaults(fn=cmd_spec)
 
     sub.add_parser("render", help="manifest -> controlled English").set_defaults(fn=cmd_render)
 
