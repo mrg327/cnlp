@@ -61,6 +61,11 @@ def relevant_rows(rows: list[dict[str, Any]], phase: dict[str, Any] | None) -> l
     return out
 
 
+SECTIONS = ("plan", "audit", "lint", "param")
+# Informational "not built yet" findings: expected mid-project, never counted as warnings.
+NOT_YET = {"AUDIT_UNUSED", "PARAM_MISSING", "PARAM_TASK_MISSING"}
+
+
 def status(cfg_path: Path) -> dict[str, Any]:
     cfg_path = Path(cfg_path).expanduser()
     cfg = yaml.safe_load(cfg_path.read_text("utf-8")) or {}
@@ -71,6 +76,7 @@ def status(cfg_path: Path) -> dict[str, Any]:
     proc = phases_mod.load(target, str(cfg.get("procedure", phases_mod.DEFAULT_PROCEDURE)))
     plist = proc["phases"] if proc else []
     cur = proc["current"] if proc else None
+    nxt = next((p for p in plist if cur and p["n"] > cur["n"]), None)
     if proc is None:
         notes.append("build procedure not found; phase information unavailable")
     elif not plist:
@@ -85,7 +91,9 @@ def status(cfg_path: Path) -> dict[str, Any]:
                 "rule": "STATUS_PHASE_DONE_PIN_UNUSED", "severity": "warning", "gpio": u["gpio"],
                 "message": f"GPIO {u['gpio']} ({u['role']}) belongs to phase {p['n']} {p['name']}, "
                            "which is marked done, but the code doesn't configure it."})
-    allf = res.get("plan_findings", []) + res.get("audit_findings", []) + res.get("lint_findings", [])
+    allf = [f for k in SECTIONS for f in res.get(k + "_findings", [])]
+    actionable_warnings = sum(1 for f in allf
+                              if f.get("severity") == "warning" and f.get("rule") not in NOT_YET)
     rt = [f for f in res.get("lint_findings", []) if str(f.get("rule", "")).startswith("RT")]
     s = res["summary"]
     return {
@@ -95,9 +103,9 @@ def status(cfg_path: Path) -> dict[str, Any]:
         "phase": {"current": _brief(cur) | {"outcome": cur["outcome"]} if cur else None,
                   "done_count": sum(p["status"] == "done" for p in plist),
                   "total": len(plist), "last": plist[-1]["n"] if plist else None},
-        "audit": {"errors": s["errors"], "warnings": s["warnings"],
-                  "by_section": {k: len(res.get(k + "_findings", []))
-                                 for k in ("plan", "audit", "lint")},
+        "audit": {"errors": s["errors"], "warnings": actionable_warnings,
+                  "not_yet": sum(1 for f in allf if f.get("rule") in NOT_YET),
+                  "by_section": {k: len(res.get(k + "_findings", [])) for k in SECTIONS},
                   "strapping": sorted({int(m.group(1)) for f in allf if f.get("severity") == "warning"
                                   for m in [re.search(r"GPIO (\d+)", f.get("message", ""))]
                                   if m and "strapping" in f.get("message", "").lower()})},
@@ -108,5 +116,7 @@ def status(cfg_path: Path) -> dict[str, Any]:
                      "current_phase_n": cur["n"] if cur else None,
                      "expected_phase": next((p["n"] for p in plist if _VERIF.search(p["name"])), None)},
         "next_check": cur["check"] if cur else "",
+        "watch": list(cur.get("common_problems", [])) if cur else [],
+        "next_phase": {"n": nxt["n"], "name": nxt["name"]} if nxt else None,
         "notes": notes + ev.get("notes", []),
     }

@@ -3,3 +3,4 @@ target: ~/projects/engr844_final_project
 sources: [main]
 spec: spec.cnl
 lint_profile: cnlp-profile.yaml
+parameters: parameters.yaml

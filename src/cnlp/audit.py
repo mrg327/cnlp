@@ -6,13 +6,14 @@
     sources: [main]                            # dirs under target
     spec: spec.cnl                             # relative to the yaml
     lint_profile: cnlp-profile.yaml            # optional, relative to the yaml
+    parameters: parameters.yaml                # optional expected key parameters (cnlp.params)
 
 It parses the spec, checks the plan with the pin rules, statically extracts the
 pins the C code configures (`cnlp.extract`), and diffs plan against code.
 
 Rules: AUDIT_UNPLANNED, AUDIT_UNUSED ("not configured in code yet"; expected
 while a project is mid-build), AUDIT_MODE, AUDIT_PULL, AUDIT_DRIVER,
-AUDIT_CONFLICT, AUDIT_UNRESOLVED. Nothing is written inside the target;
+AUDIT_CONFLICT, AUDIT_UNRESOLVED; with `parameters:` also PARAM_* (see cnlp.params). Nothing is written inside the target;
 `write_report` refuses such paths via `guard_write`.
 """
 
@@ -29,7 +30,7 @@ from typing import Any
 
 import yaml
 
-from cnlp import cnl, rules
+from cnlp import cnl, params, rules
 from cnlp.extract import Extracted, Use, extract
 from cnlp.manifest import Finding, Manifest, Pin
 
@@ -285,9 +286,13 @@ def _lint(target: Path, profile: Path | None, notes: list[str]) -> list[Finding]
 SNAPSHOT_IGNORE = shutil.ignore_patterns("build", "managed_components", ".git")
 
 
-def _snapshot(target: Path, sources: list[str], dest: Path) -> dict[str, Any]:
-    """Copy `target/<source>` dirs into `dest` (same relative layout); hash what was copied."""
-    for s in sources:
+PARAM_FILES = ("sdkconfig", "sdkconfig.defaults")
+
+
+def _snapshot(target: Path, sources: list[str], dest: Path,
+              extra: tuple[str, ...] = ()) -> dict[str, Any]:
+    """Copy `target/<source>` dirs (+ `extra` top-level files) into `dest`; hash what was copied."""
+    for s in [*sources, *extra]:
         src = target / s
         if src.is_dir():
             shutil.copytree(src, dest / s, symlinks=True, ignore=SNAPSHOT_IGNORE)
@@ -348,6 +353,13 @@ def audit(config_path: Path) -> dict[str, Any]:
         raise AuditError(f"target directory not found: {target}")
 
     plan, plan_findings = _plan_findings(spec)
+    param_spec: dict[str, Any] | None = None
+    if cfg.get("parameters"):
+        pp = base / str(cfg["parameters"])
+        if pp.is_file():
+            param_spec = yaml.safe_load(pp.read_text("utf-8")) or {}
+        else:
+            notes.append(f"parameters file {pp.name} not found; parameter audit skipped")
     profile = None
     if cfg.get("lint_profile"):
         profile = base / str(cfg["lint_profile"])
@@ -357,12 +369,15 @@ def audit(config_path: Path) -> dict[str, Any]:
     # mirrors the target root, so messages read `main/scan.c:22`.
     with tempfile.TemporaryDirectory(prefix="cnlp-audit-") as tmp:
         snap_root = Path(tmp)
-        snapshot = _snapshot(target, sources, snap_root)
+        snapshot = _snapshot(target, sources, snap_root,
+                             PARAM_FILES if param_spec is not None else ())
         ex = extract(snap_root, sources)
+        pres = params.check(snap_root, sources, param_spec) if param_spec is not None else None
         lint_findings = _lint(snap_root, profile, notes)
     audit_findings = _diff(plan, ex)
 
-    allf = plan_findings + audit_findings + lint_findings
+    param_findings = pres.findings if pres is not None else []
+    allf = plan_findings + audit_findings + lint_findings + param_findings
     counts = Counter(f.rule for f in allf)
     unused = counts.get("AUDIT_UNUSED", 0)
     summary = {
@@ -374,6 +389,8 @@ def audit(config_path: Path) -> dict[str, Any]:
         "files_scanned": len(ex.files),
         "by_rule": dict(sorted(counts.items())),
     }
+    if pres is not None:
+        summary["derived"] = pres.derived
     return {
         "ok": summary["errors"] == 0,
         "target": str(target),
@@ -381,6 +398,8 @@ def audit(config_path: Path) -> dict[str, Any]:
         "plan_findings": [f.to_dict() for f in plan_findings],
         "audit_findings": [f.to_dict() for f in audit_findings],
         "lint_findings": [f.to_dict() for f in lint_findings],
+        "param_findings": [f.to_dict() for f in param_findings],
+        "params": ({"derived": pres.derived, "tasks": pres.tasks} if pres is not None else None),
         "summary": summary,
         "notes": notes,
         "extracted": ex.to_dict(),

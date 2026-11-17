@@ -1,0 +1,26 @@
+# Expected key parameters of the synth, from its CLAUDE.md "Key parameters" table.
+# Checked against a snapshot of the project by `cnlp audit` (see src/cnlp/params.py).
+source: "CLAUDE.md Key parameters"
+
+sdkconfig:
+  CONFIG_FREERTOS_HZ: 1000          # scan every 1 ms = one tick
+  CONFIG_FREERTOS_UNICORE: false    # audio on core 1, the rest on core 0
+
+constants:                          # main/audio.c #defines
+  AUDIO_SAMPLE_RATE_HZ: 48000
+  AUDIO_FRAMES_PER_BUF: 128
+  AUDIO_DMA_DESC_NUM: 2
+
+driver_fields:
+  i2s_chan_config_t.dma_desc_num: 2
+  i2s_chan_config_t.dma_frame_num: 128
+  i2s_std_config_t.clk_cfg.sample_rate_hz: 48000
+
+tasks:                              # key = task function or its name string
+  audio_task:   {priority: 20, core: 1}
+  scan_task:    {priority: 10, core: 0}
+  ui_task:      {priority: 5,  core: 0}
+  display_task: {priority: 2,  core: 0}
+
+derived:
+  buffer_period_ms: {frames: AUDIO_FRAMES_PER_BUF, rate: AUDIO_SAMPLE_RATE_HZ}

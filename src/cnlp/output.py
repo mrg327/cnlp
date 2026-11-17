@@ -285,7 +285,10 @@ def fmt_audit(obj: dict, st: Style) -> str:
     pf, af, lf = (obj.get(k, []) for k in ("plan_findings", "audit_findings", "lint_findings"))
     unused = [f for f in af if f.get("rule") == "AUDIT_UNUSED"]
     af_shown = [f for f in af if f.get("rule") != "AUDIT_UNUSED"]
-    e, w = s.get("errors", 0), s.get("warnings", 0) - len(unused)
+    prf = obj.get("param_findings") or []
+    p_missing = [f for f in prf if f.get("rule") in ("PARAM_MISSING", "PARAM_TASK_MISSING")]
+    prf_shown = [f for f in prf if f not in p_missing]
+    e, w = s.get("errors", 0), s.get("warnings", 0) - len(unused) - len(p_missing)
     snap_line = (f"Snapshot: {plural(snap.get('files', 0), 'file')}, "
                  f"sha {str(snap.get('sha256', ''))[:8]}{st.ell}")
     lines = [f"Audit of {rel(obj.get('target', ''))}", snap_line, ""]
@@ -297,6 +300,14 @@ def fmt_audit(obj: dict, st: Style) -> str:
         c = counts_line(fs)
         lines += ["", f"{st.c('bold', title)}  {st.c('dim', c if c else 'clean')}"]
         lines += finding_lines(fs, st)
+    if obj.get("params") is not None:
+        c = counts_line(prf_shown)
+        lines += ["", f"{st.c('bold', 'Parameters')}  {st.c('dim', c if c else 'clean')}"]
+        lines += finding_lines(prf_shown, st)
+        for f in p_missing:
+            lines.append(_wrap("  - ", "    ", str(f.get("message", "")), st.width))
+        for k, v in (s.get("derived") or {}).items():
+            lines.append(f"  derived: {k} = {v}")
     counts = (f"  {s.get('planned_pins', 0)} planned pins, {s.get('pins_in_code', 0)} found in "
               f"code, {s.get('files_scanned', 0)} files scanned")
     lines += ["", st.c("bold", "Summary"), counts]
@@ -396,11 +407,10 @@ def fmt_status(obj: dict, st: Style) -> str:
     else:
         head += f" {st.dash} phase information unavailable"
     a = obj.get("audit", {})
-    e, w = a.get("errors", 0), a.get("warnings", 0)
+    e, w = a.get("errors", 0), a.get("warnings", 0)  # status already excludes "not yet" items
     unused = obj.get("unused_pins", [])
-    w_other = max(w - len(unused), 0)
     bits = [plural(e, "error") if e else "no errors"]
-    bits.append(plural(w_other, "warning") if w_other else "no other warnings")
+    bits.append(plural(w, "warning") if w else "no warnings")
     extra = (" (" + ", ".join(f"GPIO {g}" for g in a["strapping"]) + " strapping)") if a.get("strapping") else ""
     lines = [head,
              f"{st.sym('error' if e else 'ok')} Audit      {', '.join(bits)}{extra}"]
@@ -435,6 +445,14 @@ def fmt_status(obj: dict, st: Style) -> str:
             lines.append(f"  GPIO {str(u['gpio']).ljust(3)}{str(u['role']).ljust(14)} {where}")
     if obj.get("next_check"):
         lines.append(_wrap("This phase's check: ", "This phase's check: ", obj["next_check"], st.width))
+    watch = obj.get("watch") or []
+    if watch:
+        lines.append("Watch for:")
+        for w in watch[:5]:
+            t = "  - " + str(w)
+            lines.append(t if len(t) <= st.width else t[:st.width - len(st.ell)] + st.ell)
+        if len(watch) > 5:
+            lines.append(f"  +{len(watch) - 5} more")
     rel_rows = obj.get("evidence", {}).get("relevant", [])
     if rel_rows:
         def lab(r: dict) -> str:

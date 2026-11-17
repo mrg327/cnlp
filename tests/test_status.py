@@ -75,3 +75,21 @@ def test_cli_text_and_json(cfg, capsys, monkeypatch):
     assert "STATUS_PHASE_DONE_PIN_UNUSED" not in out and "marked done" in out
     rc = cli.main(["status", "x", "--json"])
     assert json.loads(capsys.readouterr().out)["phase"]["current"]["name"] == "Matrix"
+
+
+def test_watch_and_next_phase(cfg):
+    r = status.status(cfg)
+    assert len(r["watch"]) == 3 and r["watch"][2] == "Keys ghost: a diode is missing."
+    assert r["next_phase"] == {"n": 3, "name": "Encoder"}
+
+
+def test_fmt_watch_list(cfg, capsys, monkeypatch):
+    from cnlp.output import Style, fmt_status
+    r = status.status(cfg)
+    r["watch"] = [f"problem {i} " + "word " * 40 for i in range(7)]
+    out = fmt_status(r, Style(width=100, color=False)).splitlines()
+    i = out.index("Watch for:")
+    assert out[i + 1].startswith("  - problem 0") and out[i + 6] == "  +2 more"
+    assert all(len(x) <= 100 for x in out[i:i + 7])
+    r["watch"] = []
+    assert "Watch for:" not in fmt_status(r, Style(width=100, color=False))

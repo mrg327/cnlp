@@ -306,3 +306,49 @@ def test_disable_rt_rule(tmp_path):
     assert [f.rule for f in lint.run(tmp_path, profile_path=prof)] == ["RT5_DOUBLE"]
     prof.write_text("realtime: {}\ndisable: [RT5_DOUBLE]\n")
     assert lint.run(tmp_path, profile_path=prof) == []
+
+
+# ---- RT7 ----------------------------------------------------------------
+P1 = {"tasks": {"scan": {"entry": "scan_task", "period_ms": 1}}}
+
+
+def rt7(tmp_path, body, cfg=None, pre=""):
+    src = f"{pre}\nvoid scan_task(void *a) {{\n  TickType_t last = xTaskGetTickCount();\n" \
+          f"  for (;;) {{\n    scan();\n    {body}\n  }}\n}}\n"
+    fs = chk(tmp_path, {"main/s.c": src}, P1 if cfg is None else cfg)
+    return [f for f in fs if f.rule.startswith("RT7")]
+
+
+def test_rt7_vtaskdelay_is_error(tmp_path):
+    fs = rt7(tmp_path, "vTaskDelay(pdMS_TO_TICKS(1));")
+    assert [(f.rule, f.severity) for f in fs] == [("RT7_PERIOD_DRIFT", "error")]
+    assert fs[0].message.startswith("main/s.c:6: scan_task paces its 1 ms loop with vTaskDelay")
+    assert "vTaskDelayUntil" in fs[0].message
+
+
+def test_rt7_correct_period_clean(tmp_path):
+    assert rt7(tmp_path, "vTaskDelayUntil(&last, pdMS_TO_TICKS(1));") == []
+    assert rt7(tmp_path / "b", "xTaskDelayUntil(&last, SCAN_TICKS);",
+               pre="#define SCAN_MS 1\n#define SCAN_TICKS pdMS_TO_TICKS(SCAN_MS)") == []
+
+
+def test_rt7_mismatch(tmp_path):
+    fs = rt7(tmp_path, "vTaskDelayUntil(&last, pdMS_TO_TICKS(5));")
+    assert [(f.rule, f.severity) for f in fs] == [("RT7_PERIOD_MISMATCH", "warning")]
+    assert "5 ms" in fs[0].message and "1 ms" in fs[0].message
+
+
+def test_rt7_zero_ticks_at_100hz(tmp_path):
+    cfg = {**P1, "tick_hz": 100}
+    fs = rt7(tmp_path, "vTaskDelayUntil(&last, pdMS_TO_TICKS(1));", cfg)
+    assert [(f.rule, f.severity) for f in fs] == [("RT7_PERIOD_DRIFT", "warning")]
+    assert "0 ticks at 100 Hz" in fs[0].message
+    assert rt7(tmp_path / "ok", "vTaskDelayUntil(&last, pdMS_TO_TICKS(10));",
+               {"tasks": {"scan": {"entry": "scan_task", "period_ms": 10}}, "tick_hz": 100}) == []
+
+
+def test_rt7_nonperiodic_task_ignored(tmp_path):
+    src = "void blink_task(void *a) { for (;;) { vTaskDelay(pdMS_TO_TICKS(500)); } }"
+    fs = chk(tmp_path, {"main/b.c": src}, {"tasks": {"blink": {"entry": "blink_task"}}})
+    assert [f for f in fs if f.rule.startswith("RT7")] == []
+    assert rt7(tmp_path / "x", "vTaskDelay(1);", cfg={}) == []

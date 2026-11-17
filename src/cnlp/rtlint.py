@@ -11,17 +11,24 @@
   RT5_DOUBLE (error)           `double`, unsuffixed float literal, double math call (rule 5)
   RT5_ISR_FLOAT (error)        floating point inside an ISR (rule 5)
   RT6_STARTUP_ORDER (error)    app_main init out of order / audio task not last (rule 6)
+  RT7_PERIOD_DRIFT (error)     periodic task (profile period_ms) paces its loop with
+                               vTaskDelay instead of vTaskDelayUntil; or (warning) the
+                               delay-until period is 0 ticks at the configured tick_hz
+  RT7_PERIOD_MISMATCH (warning) delay-until period differs from the profile's period_ms
 
 Config (`realtime:` in the profile), all keys optional::
 
     realtime:
       tasks: {audio: {entry: audio_task, realtime: true}}   # plus auto-discovery
       allowed_blocking_in_realtime: [i2s_channel_write]
+      tick_hz: 1000                   # RT7 (default 1000)
       blocking_calls: [my_wait]       # extra calls that count as blocking for RT4
       startup_function: app_main
       startup_order:
         - {stage: gpio, calls: ["gpio_config", "*_gpio_init"]}
         - {stage: tasks, calls: ["xTaskCreate*"]}
+
+RT7 only checks tasks given `period_ms` (e.g. `scan: {entry: scan_task, period_ms: 1}`).
 
 Tasks are auto-discovered from the first argument of xTaskCreate* calls; only
 tasks listed with `realtime: true` get RT1.
@@ -598,6 +605,82 @@ class Checker:
                                 "(real-time rule 4)",
                             )
 
+    # ---- RT7 -------------------------------------------------------------
+    def _ticks(self, expr: str, hz: int, depth: int = 0) -> int | None:
+        """Evaluate a delay expression (numbers, macros, consts, pdMS_TO_TICKS) to ticks."""
+        s = re.sub(r"\s+", "", _STRIP_RE.sub(" ", expr))
+        if depth > 6:
+            return None
+        for _ in range(8):  # innermost pdMS_TO_TICKS first
+            m = re.search(r"pdMS_TO_TICKS\(([^()]*)\)", s)
+            if not m:
+                break
+            ms = self._ticks(m.group(1), hz, depth + 1)
+            if ms is None:
+                return None
+            s = s[: m.start()] + str(ms * hz // 1000) + s[m.end():]
+        s = re.sub(r"\((?:u?int\d*_t|TickType_t|int|unsigned|long)\)", "", s)
+        s = re.sub(r"(?<=\d)[uUlL]+\b", "", s)
+
+        def sub(m: re.Match) -> str:
+            v = self.P.macros.get(m.group())
+            if v is None:
+                return m.group()
+            r = self._ticks(v, hz, depth + 1)
+            return str(r) if r is not None else m.group()
+
+        s = re.sub(r"\b[A-Za-z_]\w*\b", sub, s)
+        if not re.fullmatch(r"[\d+\-*/%()]+", s):
+            return None
+        try:
+            v = eval(s.replace("/", "//"), {"__builtins__": {}}, {})
+        except (SyntaxError, ValueError, ZeroDivisionError, TypeError):
+            return None
+        return v if isinstance(v, int) else None
+
+    def rt7(self) -> None:
+        hz = int(self.cfg.get("tick_hz") or 1000)
+        for spec in (self.cfg.get("tasks") or {}).values():
+            if not isinstance(spec, dict) or not spec.get("entry") or not spec.get("period_ms"):
+                continue
+            entry, period = spec["entry"], spec["period_ms"]
+            for f in self.P.funcs.get(entry, []):
+                for n in _walk(f.node):
+                    body = n.child_by_field_name("body") if self._infinite(n) else None
+                    if body is None:
+                        continue
+                    calls = _calls_in(body, f.rel)
+                    untils = [c for c in calls if c.name in ("vTaskDelayUntil", "xTaskDelayUntil")]
+                    if not untils:
+                        for c in calls:
+                            if c.name == "vTaskDelay":
+                                self.add(
+                                    "RT7_PERIOD_DRIFT", "error", f.rel, c.line,
+                                    f"{entry} paces its {period} ms loop with vTaskDelay, so its "
+                                    "period drifts by however long the scan took; use "
+                                    "vTaskDelayUntil with a TickType_t last-wake time (build "
+                                    "procedure phase 4 / CLAUDE.md scan every 1 ms)")
+                        continue
+                    for c in untils:
+                        a = c.args()
+                        if len(a) < 2:
+                            continue
+                        t = self._ticks(_txt(a[1]), hz)
+                        if t is None:
+                            continue
+                        if t == 0:
+                            self.add(
+                                "RT7_PERIOD_DRIFT", "warning", f.rel, c.line,
+                                f"{entry}'s {c.name} period '{_txt(a[1])}' is 0 ticks at "
+                                f"{hz} Hz, so it never waits; the tick is too coarse for "
+                                f"{period} ms (raise CONFIG_FREERTOS_HZ)")
+                        elif t * 1000 != period * hz:
+                            self.add(
+                                "RT7_PERIOD_MISMATCH", "warning", f.rel, c.line,
+                                f"{entry}'s {c.name} period '{_txt(a[1])}' is {t} ticks = "
+                                f"{t * 1000 / hz:g} ms at {hz} Hz, but the profile says "
+                                f"{period} ms")
+
     # ---- RT5 -------------------------------------------------------------
     def rt5_double(self) -> None:
         msg_lit = (
@@ -836,6 +919,7 @@ class Checker:
         self.rt5_double()
         self.rt5_isr()
         self.rt6()
+        self.rt7()
         return self.out
 
 

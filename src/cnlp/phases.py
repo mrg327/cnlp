@@ -68,17 +68,29 @@ def _reqs(lines: list[str]) -> list[str]:
     return out
 
 
+def _plain(text: str) -> str:
+    """One-line plain text: markdown emphasis, code ticks and link targets removed."""
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"[*_`]+", "", text)
+    return " ".join(text.split())
+
+
+_STEP = re.compile(r"^\s*\d+\.\s+\S")
+
+
 def _sections(md: str) -> dict[int, dict[str, Any]]:
     """phase number -> {name, goal, check, lines (kept)}."""
     secs: dict[int, dict[str, Any]] = {}
     cur: dict[str, Any] | None = None
     skipping = False
+    problems = False
     for ln in md.splitlines():
         h = _PHASE_H.match(ln)
         if h:
-            cur = {"name": h.group(2), "goal": "", "check": "", "lines": []}
+            cur = {"name": h.group(2), "goal": "", "check": "", "lines": [], "problems": []}
             secs[int(h.group(1))] = cur
             skipping = False
+            problems = False
             continue
         if ln.startswith("## "):
             cur = None
@@ -89,11 +101,17 @@ def _sections(md: str) -> dict[int, dict[str, Any]]:
         if lab:
             label = (lab.group(1) or lab.group(2) or "").strip().lower().rstrip(".:")
             skipping = label.startswith(SKIP_LABELS)
+            problems = label.startswith("common problems")
             for key in ("goal", "check"):
                 if label == key:
                     cur[key] = re.sub(r"^\*\*[^*]+\*\*:?\s*", "", ln).strip()
         elif ln.startswith("## "):
             skipping = False
+        elif problems:
+            if re.match(r"^\s*[-*]\s+", ln):
+                cur["problems"].append(_plain(re.sub(r"^\s*[-*]\s+", "", ln)))
+            elif ln.startswith((" ", "\t")) and ln.strip() and cur["problems"]:
+                cur["problems"][-1] = _plain(cur["problems"][-1] + " " + ln)
         if not skipping:
             cur["lines"].append(ln)
     return secs
@@ -116,7 +134,9 @@ def parse_procedure(md: str) -> dict[str, Any]:
                 phases.append({
                     "n": n, "name": m.group(2).strip(), "outcome": r[oi],
                     "status": _status(r[si]), "gpios": _gpios("\n".join(body)),
-                    "reqs": _reqs(body), "goal": sec.get("goal", ""),
+                    "reqs": _reqs(body), "goal": _plain(sec.get("goal", "")),
+                    "steps_count": sum(bool(_STEP.match(x)) for x in body),
+                    "common_problems": list(sec.get("problems", [])),
                     "check": sec.get("check", "")})
             break
     phases.sort(key=lambda p: p["n"])

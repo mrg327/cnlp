@@ -49,6 +49,13 @@
 2. Probe: GPIO 14 and 2.
 3. Verifies F10 and R4.
 
+**Common problems**
+
+- A whole row never registers: that wire is not connected to its **GPIO**.
+- The scan period drifts: `vTaskDelay` was used instead of `vTaskDelayUntil`;
+  see [the docs](x.md) for why.
+- Keys ghost: a diode is missing.
+
 **Check:** all keys read; scan period 1 ms.
 
 ## Phase 3: Encoder

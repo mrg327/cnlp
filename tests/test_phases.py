@@ -51,3 +51,16 @@ def test_earliest_for_gpio():
     assert phases.earliest_for_gpio(ph, 2)["n"] == 0
     assert phases.earliest_for_gpio(ph, 32)["n"] == 3
     assert phases.earliest_for_gpio(ph, 21) is None
+
+
+def test_common_problems_goal_steps():
+    p = {x["n"]: x for x in phases.parse_procedure(MD)["phases"]}
+    assert p[2]["common_problems"] == [
+        "A whole row never registers: that wire is not connected to its GPIO.",
+        "The scan period drifts: vTaskDelay was used instead of vTaskDelayUntil; see the docs for why.",
+        "Keys ghost: a diode is missing.",
+    ]
+    assert p[1]["common_problems"] == ["GPIO 1 or 3 is connected to something."]
+    assert p[0]["common_problems"] == [] and p[3]["common_problems"] == []
+    assert p[2]["goal"] == "every key reads correctly at a stable scan period."
+    assert (p[0]["steps_count"], p[2]["steps_count"], p[3]["steps_count"]) == (1, 3, 1)

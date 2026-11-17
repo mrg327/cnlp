@@ -17,12 +17,15 @@ include_allow:
   - esp_timer.h
 
 realtime:
+  tick_hz: 1000   # FreeRTOS tick (CLAUDE.md: 1000 Hz); RT7 converts delays with it
   # Rules 1 and 4: audio prio 20 / core 1; scan 10, UI 5, display 2 on core 0.
   tasks:
     audio: {entry: audio_task, realtime: true}
     blink: {entry: blink_task}
-    # scan: {entry: scan_task}      # uncomment as the tasks appear (auto-discovery
-    # ui: {entry: ui_task}          # from xTaskCreate* also finds them)
+    # RT7: scan runs every 1 ms (CLAUDE.md "Key parameters", phase 4 step 11), so it must
+    # pace with vTaskDelayUntil. Nothing to check until a scan_task exists in the code.
+    scan: {entry: scan_task, period_ms: 1}
+    # ui: {entry: ui_task}          # uncomment as the tasks appear (auto-discovery
     # display: {entry: display_task}
 
   # Rule 1: the audio task may block only on I2S.
