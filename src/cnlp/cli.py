@@ -1,7 +1,8 @@
 """`cnlp` command line. Thin wiring only: each command calls one module function.
 
 Output is readable text by default; `--json` (before or after the subcommand) prints the raw
-JSON instead. Exit codes: 0 ok, 1 findings/refusal, 2 usage or input error.
+JSON instead, and `--for-model` prints a compact REPORT/FACTS/NEXT block for an AI assistant to
+relay (status, audit, evidence, try, ask; other commands keep the readable text). Exit codes: 0 ok, 1 findings/refusal, 2 usage or input error.
 
 Project layout (directory given by --project, default "."):
   spec.cnl                    controlled English, the source of truth with decisions.jsonl
@@ -50,6 +51,13 @@ def _out(a: argparse.Namespace, obj: Any) -> None:
     if isinstance(obj, dict) and obj.get("ok") is False and "error" in obj:
         sys.stderr.write(output.fmt_error(obj, output.Style(sys.stderr, project=str(a.project))) + "\n")
         return
+    if getattr(a, "for_model", False):
+        from cnlp import brief
+
+        name = getattr(a, "fn", None) and a.fn.__name__.removeprefix("cmd_")
+        if name in brief.BRIEFS and not (name == "evidence" and getattr(a, "ev_cmd", "") == "add"):
+            sys.stdout.write(brief.BRIEFS[name](obj) + "\n")
+            return
     sys.stdout.write(_formatter(a)(obj, st) + "\n")
 
 
@@ -64,6 +72,54 @@ def cmd_try(a: argparse.Namespace) -> int:
         return 2
     _out(a, result)
     return 0 if result["ok"] else 1
+
+
+def cmd_verify_plan(a: argparse.Namespace) -> int:
+    import re
+
+    from cnlp import audit, evidence, output, verify
+
+    args = list(a.args)
+    req = args.pop() if args and re.fullmatch(r"[A-Z]{1,3}\d+", args[-1]) else None
+    try:
+        cfg = audit.find_config(Path(args[0] if args else "."))
+        res = verify.plan(cfg, req)
+        if a.out:
+            target = Path(str((yaml_load(cfg) or {}).get("target", ""))).expanduser()
+            out = audit.guard_write(Path(a.out), target)  # never write into the project
+            out.write_text(verify.to_markdown(res))
+            res.setdefault("notes", []).append(f"checklist written to {out}")
+    except (audit.AuditError, evidence.EvidenceError) as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+    if getattr(a, "json", False):
+        _emit(res)
+    elif a.markdown and not a.out:
+        sys.stdout.write(verify.to_markdown(res))
+    else:
+        sys.stdout.write(verify.format_text(res, output.Style(project=str(a.project))) + "\n")
+    return 0
+
+
+def yaml_load(path: Path) -> Any:
+    import yaml
+
+    return yaml.safe_load(Path(path).read_text("utf-8"))
+
+
+def cmd_rules(a: argparse.Namespace) -> int:
+    from cnlp import catalog
+
+    if a.sheet:
+        sys.stdout.write(catalog.review_sheet())
+        return 0
+    rows = catalog.rules()
+    if getattr(a, "json", False):
+        _emit([r for r in rows if (not a.family or r["family"] == a.family)
+               and (not a.needs_review or (r.get("review") or {}).get("status") != "reviewed")])
+        return 0
+    sys.stdout.write(catalog.format_text(rows, family=a.family, needs_review=a.needs_review) + "\n")
+    return 0
 
 
 def cmd_config(a: argparse.Namespace) -> int:
@@ -103,6 +159,10 @@ def cmd_ask(a: argparse.Namespace) -> int:
         return 2
     if getattr(a, "json", False):
         _emit(res.to_dict())
+    elif getattr(a, "for_model", False):
+        from cnlp import brief
+
+        sys.stdout.write(brief.brief_ask(res.to_dict()) + "\n")
     else:
         sys.stdout.write(asker.format_text(res, output.Style(project=str(a.project))) + "\n")
     return 1 if res.kind == "unknown" else 0
@@ -350,7 +410,15 @@ def cmd_status(a: argparse.Namespace) -> int:
     from cnlp import audit, status
 
     try:
-        result = status.status(audit.find_config(Path(a.config)))
+        cfg = audit.find_config(Path(a.config))
+        result = status.status(cfg)
+        a_sum = result.get("audit", {})
+        if getattr(a, "for_model", False) and not getattr(a, "json", False) and (
+                a_sum.get("errors") or a_sum.get("warnings")):
+            # The status dict carries only counts; the model brief needs the rule IDs.
+            res = audit.audit(cfg)
+            result["_audit_findings"] = [f for k in ("plan", "audit", "lint", "param")
+                                         for f in res.get(k + "_findings", [])]
     except (audit.AuditError, ValueError, KeyError, OSError) as e:
         _out(a, {"ok": False, "error": str(e)})
         return 2
@@ -362,10 +430,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cnlp", description=__doc__.splitlines()[0])
     p.add_argument("--project", type=Path, default=Path("."))
     p.add_argument("--json", action="store_true", help="print raw JSON instead of readable text")
-    # Same flag after the subcommand; SUPPRESS keeps a value given before it.
+    p.add_argument("--for-model", action="store_true",
+                   help="print a compact REPORT/FACTS/NEXT block for an AI assistant to relay")
+    # Same flags after the subcommand; SUPPRESS keeps a value given before it.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
                         help="print raw JSON instead of readable text")
+    common.add_argument("--for-model", action="store_true", default=argparse.SUPPRESS,
+                        help=argparse.SUPPRESS)  # documented on the main parser
     sub = p.add_subparsers(dest="cmd", required=True)
     _add = sub.add_parser
     sub.add_parser = lambda *x, **k: _add(*x, parents=[common], **k)  # type: ignore[method-assign]
@@ -385,6 +457,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("statements", help='controlled English, e.g. \'gpio 35 is input "enc sw" with internal pull-up.\'')
     s.add_argument("project_dir", nargs="?", default=".")
     s.set_defaults(fn=cmd_try)
+
+    s = sub.add_parser("verify-plan", help="concrete verification steps per requirement (no model)")
+    s.add_argument("args", nargs="*", metavar="[project] [REQ]")
+    s.add_argument("--markdown", action="store_true", help="printable checklist with every item")
+    s.add_argument("--out", help="write the markdown checklist to FILE (outside the project)")
+    s.set_defaults(fn=cmd_verify_plan)
+
+    from cnlp import catalog as _catalog
+    s = sub.add_parser("rules", help="list every rule cnlp checks, with review status")
+    s.add_argument("--family", choices=list(_catalog.FAMILIES))
+    s.add_argument("--needs-review", action="store_true", help="only rules you haven't reviewed")
+    s.add_argument("--sheet", action="store_true", help="print a markdown review sheet")
+    s.set_defaults(fn=cmd_rules)
 
     s = sub.add_parser("config", help="show which cnlp config covers a directory")
     s.add_argument("dir", nargs="?", default=".")

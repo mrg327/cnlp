@@ -41,19 +41,19 @@ export default function (pi: ExtensionAPI) {
     "real-time rule verdict (RT1-RT6), requirement evidence counts, pins not configured yet and the current " +
     "phase's check plus a 'Watch for' list of the current phase's common problems from the build procedure. " +
     "Read-only. Authoritative for phase and progress; prefer it over reading docs by hand.",
-    () => ["status", "."], undefined,
+    () => ["--for-model", "status", "."], undefined,
     "Show the ESP32 project's phase, audit, real-time and evidence status");
 
   tool("cnlp_audit", "cnlp audit",
     "Check the project's C code against its pin plan (AUDIT_* rules), chip/module pin rules (C*, W*) and the " +
     "project's real-time rules (RT1-RT6). Works on a temp snapshot; never edits code. Run after code changes.",
-    () => ["audit", "."], undefined,
+    () => ["--for-model", "audit", "."], undefined,
     "Audit ESP32 code against the pin plan and real-time rules");
 
   tool("cnlp_evidence", "cnlp evidence",
     "Requirement evidence matrix (R*/F* IDs from the project's spec): status, strongest evidence, which " +
     "verification test covers each. Use before saying anything about whether a requirement is met.",
-    () => ["evidence", "."]);
+    () => ["--for-model", "evidence", "."]);
 
   tool("cnlp_try", "cnlp try",
     "What-if check for a proposed pin change, before anyone edits code: give the new pin line in cnlp's " +
@@ -61,14 +61,14 @@ export default function (pi: ExtensionAPI) {
     "whole pin plan (pin conflicts, input-only pins, strapping pins, pulls). Changes nothing. Pin line format: " +
     "gpio <n> is input|output|open-drain \"<role>\" with internal pull-up|external pull-up|off-board pull-up|no pull. " +
     "Using an existing role moves that pin. Example: gpio 35 is input \"enc sw\" with internal pull-up.",
-    (p) => ["try", String(p.statement), "."],
+    (p) => ["--for-model", "try", String(p.statement), "."],
     Type.Object({ statement: Type.String({ description: "Controlled-English pin line(s), each ending with a period" }) }),
     "Check a proposed GPIO/pin change against all pin rules before editing code");
 
   tool("cnlp_ask", "cnlp ask",
     "Ask cnlp a question about itself, a rule ID, a pin, or which cnlp command to use. Answers come only from " +
     "cnlp's own sources with citations; '?' means it doesn't know.",
-    (p) => ["ask", String(p.question)],
+    (p) => ["--for-model", "ask", String(p.question)],
     Type.Object({ question: Type.String({ description: "The question, in plain English" }) }));
 
   pi.on("session_start", async (_event, ctx) => {
@@ -81,6 +81,7 @@ export default function (pi: ExtensionAPI) {
     return {
       systemPrompt: event.systemPrompt + "\n\n" + [
         "This directory is an ESP32 project checked by cnlp (config: " + config + ").",
+        "- cnlp tool output is a REPORT / FACTS / NEXT block. Relay the REPORT lines to the user including their rule IDs exactly as written (e.g. PARAM_TASK, RT7_PERIOD_DRIFT); never rename or paraphrase a rule ID. Use FACTS (phase, check, watch-for, requirement counts) instead of reading the docs or source files to re-derive them. Offer the NEXT steps as suggestions for the user to review; do not carry them out unasked.",
         "- Before answering about progress, the current phase, what to do or watch out for next, pins, rules, or whether the code is OK, call cnlp_status first (its 'Watch for' list is the build procedure's common problems for this phase — include them); after any C code change call cnlp_audit. Base the answer on their output and quote rule IDs; don't re-derive phase or pin facts from the docs.",
         "- Before recommending or making any pin/GPIO change (moving a signal, changing a pull), call cnlp_try with the proposed pin line and base the answer on its result; it knows the whole pin plan, including pins already in use.",
         "- When cnlp reports a finding, any fix you propose must satisfy the rule exactly as cnlp's message states it. Never say a change resolves a finding unless cnlp_audit, run after the change, no longer reports it.",

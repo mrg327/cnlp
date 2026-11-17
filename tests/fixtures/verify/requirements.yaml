@@ -1,0 +1,16 @@
+spec: docs/spec.md
+requirements:
+  F1: {kind: functional, accepts: [tested, reviewed]}
+  F10:
+    kind: functional
+    accepts: [tested]
+    verify: {generator: ghosting, layout: [["a", "b"], ["c", "d"]]}
+  R1:
+    kind: timing
+    accepts: [measured_scope, tested]
+    verify: {tests: {"Headroom": {measure: pwidth, ch: 1, probe: probe_audio, criterion: "max < 1.6 ms"}}}
+  R4:
+    kind: timing
+    accepts: [measured_scope]
+    verify: {tests: {"Scan period": {measure: period, probe: probe_scan, criterion: "1 ms ±2%"}}}
+  R5: {kind: timing, accepts: [measured_scope, tested]}

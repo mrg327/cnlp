@@ -1,5 +1,7 @@
 # cnlp
 
+[![CI](https://github.com/mrg327/cnlp/actions/workflows/ci.yml/badge.svg)](https://github.com/mrg327/cnlp/actions/workflows/ci.yml)
+
 Turns a plain-English request into ESP32 C firmware and checks it against
 deterministic gates. Models propose; deterministic tools and user approval
 gates decide.

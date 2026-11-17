@@ -1,5 +1,10 @@
 # Per-requirement metadata for the evidence matrix. Requirement sentences and the
 # verification-plan "Covers" mapping are read at runtime from the target's spec.
+# `verify:` hints feed `cnlp verify-plan` (nothing else reads them). Keys under `tests`
+# are verification-plan test names (exactly as in the spec). Per test: measure (a
+# `cnlp measure` kind), probe/probe2 (pin roles from spec.cnl, scope CH ch / ch2),
+# criterion (measure syntax), basis (where the criterion came from), evidence (type for
+# non-scope tests). Requirement-level: generator: ghosting + layout (rows top to bottom).
 # Evidence types (strongest first): measured_scope, tested, measured_serial,
 # static, reviewed. A requirement is satisfied only by a passing record whose
 # type is in its `accepts`. Static checks link automatic lint rules to a
@@ -9,10 +14,24 @@ evidence: evidence.jsonl
 accepted_unverified: []        # IDs the user explicitly accepted without evidence
 requirements:
   R1: {kind: timing, accepts: [measured_scope, measured_serial, tested],
-       static_checks: [RT1_AUDIO_BLOCKING, RT4_TASK_NO_BLOCK, RT5_DOUBLE, RT5_ISR_FLOAT]}
+       static_checks: [RT1_AUDIO_BLOCKING, RT4_TASK_NO_BLOCK, RT5_DOUBLE, RT5_ISR_FLOAT],
+       verify: {tests: {
+         "Audio timing headroom": {measure: pwidth, ch: 1, probe: probe_audio,
+                                   criterion: "max < 1.6 ms",
+                                   basis: "spec: well under the 2.67 ms buffer period; 1.6 ms = 0.6 x T, the spec's fixed-point fallback threshold. Use infinite persistence under worst-case load (3 voices, all effects)"},
+         "Underrun count": {evidence: tested, value: 0, unit: underruns,
+                           note: "Run 10 minutes under worst-case load; the underrun counter must read 0"}}}}
   R2: {kind: design, accepts: [reviewed], static_checks: [RT1_AUDIO_BLOCKING, RT3_SHARED_WRITER]}
-  R3: {kind: timing, accepts: [measured_scope]}
-  R4: {kind: timing, accepts: [measured_scope, measured_serial]}
+  R3: {kind: timing, accepts: [measured_scope],
+       verify: {tests: {
+         "Latency": {measure: delay, ch: 1, ch2: 2, probe: col_1, probe2: probe_scan,
+                     criterion: "max < 6.66 ms",
+                     basis: "spec budget 12 ms minus the output delay D x T = 2 x 2.667 = 5.33 ms (build-procedure Phase 10 step 4 adds it back). cnlp measure delay uses rising-to-rising edges; the column line FALLS on press, so set the scope manually or use --raw-query"}}}}
+  R4: {kind: timing, accepts: [measured_scope, measured_serial],
+       verify: {tests: {
+         "Scan period": {measure: period, ch: 1, probe: probe_scan,
+                         criterion: "1 ms ±2%",
+                         basis: "spec: 1 ms, stable, no drift. The ±2% tolerance is cnlp's choice, not the spec's: edit if your instructor wants another. Also check max-min jitter on the scope"}}}}
   R5: {kind: timing, accepts: [measured_scope, measured_serial, tested],
        static_checks: [RT1_AUDIO_BLOCKING, RT3_SHARED_WRITER]}
   R6: {kind: functional, accepts: [tested], static_checks: [RT2_QUEUE_TIMEOUT]}
@@ -25,5 +44,12 @@ requirements:
   F7: {kind: functional, accepts: [reviewed, tested]}
   F8: {kind: functional, accepts: [reviewed, measured_scope, tested]}
   F9: {kind: functional, accepts: [tested, measured_scope, reviewed]}
-  F10: {kind: functional, accepts: [tested]}
+  F10: {kind: functional, accepts: [tested],
+        verify: {generator: ghosting,
+                 # rows top (R1) to bottom (R5), columns C1..C5; from build-procedure Phase 4
+                 layout: [["C# upper", "D# upper", "F# upper", "G# upper", "A# upper"],
+                          ["C#", "D#", "F#", "G#", "A#"],
+                          ["F upper", "G upper", "A upper", "B upper", "Octave toggle"],
+                          ["A", "B", "C upper", "D upper", "E upper"],
+                          ["C", "D", "E", "F", "G"]]}}
   F11: {kind: functional, accepts: [tested, reviewed]}

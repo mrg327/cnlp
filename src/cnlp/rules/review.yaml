@@ -1,0 +1,39 @@
+# The user's review record for hand-owned rule data. cnlp only READS this file; it never
+# marks a rule reviewed. Edit by hand, or tell your agent your decision and have it edit.
+# status: unreviewed | reviewed | changes-requested   (by / date / note are free text)
+reviews:
+  C1: {status: unreviewed, by: "", date: "", note: ""}
+  C2: {status: unreviewed, by: "", date: "", note: ""}
+  C3: {status: unreviewed, by: "", date: "", note: ""}
+  C4: {status: unreviewed, by: "", date: "", note: ""}
+  C5: {status: unreviewed, by: "", date: "", note: ""}
+  C6: {status: unreviewed, by: "", date: "", note: ""}
+  C7: {status: unreviewed, by: "", date: "", note: ""}
+  C8: {status: unreviewed, by: "", date: "", note: ""}
+  C9: {status: unreviewed, by: "", date: "", note: ""}
+  C10: {status: unreviewed, by: "", date: "", note: ""}
+  C11: {status: unreviewed, by: "", date: "", note: ""}
+  C12: {status: unreviewed, by: "", date: "", note: ""}
+  C13: {status: unreviewed, by: "", date: "", note: ""}
+  C14: {status: unreviewed, by: "", date: "", note: ""}
+  C15: {status: unreviewed, by: "", date: "", note: ""}
+  C16: {status: unreviewed, by: "", date: "", note: ""}
+  C17: {status: unreviewed, by: "", date: "", note: "added 2026-11-17"}
+  W1: {status: unreviewed, by: "", date: "", note: ""}
+  W2: {status: unreviewed, by: "", date: "", note: ""}
+  W3: {status: unreviewed, by: "", date: "", note: ""}
+  W4: {status: unreviewed, by: "", date: "", note: ""}
+  W5: {status: unreviewed, by: "", date: "", note: ""}
+  FLOATING: {status: unreviewed, by: "", date: "", note: ""}
+  I2C_WEAK_PULL: {status: unreviewed, by: "", date: "", note: ""}
+  OPEN_DRAIN_PULL: {status: unreviewed, by: "", date: "", note: ""}
+  OWNER: {status: unreviewed, by: "", date: "", note: ""}
+  RT1_AUDIO_BLOCKING: {status: unreviewed, by: "", date: "", note: ""}
+  RT2_QUEUE_TIMEOUT: {status: unreviewed, by: "", date: "", note: ""}
+  RT3_SHARED_WRITER: {status: unreviewed, by: "", date: "", note: ""}
+  RT4_TASK_NO_BLOCK: {status: unreviewed, by: "", date: "", note: ""}
+  RT5_DOUBLE: {status: unreviewed, by: "", date: "", note: ""}
+  RT5_ISR_FLOAT: {status: unreviewed, by: "", date: "", note: ""}
+  RT6_STARTUP_ORDER: {status: unreviewed, by: "", date: "", note: ""}
+  RT7_PERIOD_DRIFT: {status: unreviewed, by: "", date: "", note: ""}
+  RT7_PERIOD_MISMATCH: {status: unreviewed, by: "", date: "", note: ""}
