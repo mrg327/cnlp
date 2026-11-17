@@ -73,6 +73,7 @@ the spec, not to claim it is "correct".
   the verify-first list. Diagrams appear as placeholders here; they live in
   the shared design doc.
 - [docs/PLAN.md](docs/PLAN.md): the working plan, broken into ordered steps.
+- [docs/USING.md](docs/USING.md): daily use with Pi: what to run, what it means, what the model can't do.
 - [docs/IDEAS.md](docs/IDEAS.md): ideas logged for later, not planned.
 
 ## Before building

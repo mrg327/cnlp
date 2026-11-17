@@ -56,7 +56,7 @@ export default function (pi: ExtensionAPI) {
 
   tool("cnlp_status", "cnlp status",
     "Project dashboard for the ESP32 project in the current directory: build phase, pin-plan audit verdict, " +
-    "real-time rule verdict (RT1-RT6), requirement evidence counts, pins not configured yet and the current " +
+    "real-time rule verdict (RT1-RT7), requirement evidence counts, pins not configured yet and the current " +
     "phase's check plus a 'Watch for' list of the current phase's common problems from the build procedure. " +
     "Read-only. Authoritative for phase and progress; prefer it over reading docs by hand.",
     () => ["--for-model", "status", "."], undefined,
@@ -64,7 +64,7 @@ export default function (pi: ExtensionAPI) {
 
   tool("cnlp_audit", "cnlp audit",
     "Check the project's C code against its pin plan (AUDIT_* rules), chip/module pin rules (C*, W*) and the " +
-    "project's real-time rules (RT1-RT6). Works on a temp snapshot; never edits code. Run after code changes.",
+    "project's real-time rules (RT1-RT7). Works on a temp snapshot; never edits code. Run after code changes.",
     () => ["--for-model", "audit", "."], undefined,
     "Audit ESP32 code against the pin plan and real-time rules");
 

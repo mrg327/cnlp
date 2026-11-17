@@ -485,3 +485,21 @@ def fmt_try(obj: dict, st: Style) -> str:
             lines += finding_lines(items, st)
     lines += ["", "Nothing was changed; edit spec.cnl (and the code) yourself if you want it."]
     return "\n".join(lines)
+
+
+def fmt_doctor(obj: dict, st: Style) -> str:
+    """One line per check (ok / ! warn / x fail / - skip), then the fixes."""
+    sym = {"ok": st.sym("ok"), "warn": st.sym("warning"), "fail": st.sym("error"), "skip": st.dash}
+    checks = obj.get("checks", [])
+    w = max((len(c["name"]) for c in checks), default=0)
+    lines = [f"{sym[c['status']]} {c['name']:<{w}}  {c['detail']}" for c in checks]
+    fixes = [c for c in checks if c["status"] != "ok" and c.get("fix")]
+    if fixes:
+        lines += ["", "To fix"]
+        lines += [f"  {c['name']}: {c['fix']}" for c in fixes]
+    bad = sum(c["status"] == "fail" for c in checks)
+    warn = sum(c["status"] == "warn" for c in checks)
+    lines += ["", f"{st.sym('ok') if obj.get('ok') else st.sym('error')} "
+              + ("Setup looks good" if obj.get("ok") else f"{plural(bad, 'check')} failed")
+              + (f", {plural(warn, 'warning')}" if warn else "")]
+    return "\n".join(lines)

@@ -252,8 +252,9 @@ _SHEET_HEAD = """# cnlp rule review sheet
 
 Print this, tick the boxes and write notes in the margin. To record a decision, edit
 `src/cnlp/rules/review.yaml` by hand (set `status` to `reviewed` or `changes-requested`,
-plus `by`, `date`, `note`) or tell your agent what you decided and ask it to edit that
-file. cnlp only reads review.yaml; it never marks a rule reviewed itself.
+plus `by`, `date`, `note`), or ask Claude to record it during a check-in. The model in
+Pi is blocked from editing this file. cnlp only reads review.yaml;
+it never marks a rule reviewed itself.
 
 Data is drafted from Espressif's ESP-IDF GPIO reference and the ESP32 datasheet strapping
 table (see `docs/design.md`, "Draft rule data").

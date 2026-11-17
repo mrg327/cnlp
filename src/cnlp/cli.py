@@ -126,6 +126,15 @@ def cmd_rules(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(a: argparse.Namespace) -> int:
+    """Read-only health check of the cnlp + Pi + ESP-IDF setup. Exit 1 if any check fails."""
+    from cnlp import doctor
+
+    result = doctor.run(a.dir)
+    _out(a, result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_config(a: argparse.Namespace) -> int:
     """Print the cnlp config that covers a directory (exit 1 if none). Cheap: reads no target files."""
     from cnlp import audit
@@ -474,6 +483,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--needs-review", action="store_true", help="only rules you haven't reviewed")
     s.add_argument("--sheet", action="store_true", help="print a markdown review sheet")
     s.set_defaults(fn=cmd_rules)
+
+    s = sub.add_parser("doctor", help="check your cnlp, Pi, ESP-IDF and model-server setup (read-only)")
+    s.add_argument("dir", nargs="?", default=".", help="project directory to check (default: current dir)")
+    s.set_defaults(fn=cmd_doctor)
 
     s = sub.add_parser("config", help="show which cnlp config covers a directory")
     s.add_argument("dir", nargs="?", default=".")
