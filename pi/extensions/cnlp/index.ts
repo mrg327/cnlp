@@ -11,7 +11,9 @@ import { Type } from "typebox";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
+import { Text } from "@earendil-works/pi-tui";
 import { checkBash, checkWrite } from "./guard.ts";
+import { parseSlash } from "./commands.ts";
 
 const CNLP = "cnlp";
 
@@ -106,6 +108,42 @@ export default function (pi: ExtensionAPI) {
     "cnlp's own sources with citations; '?' means it doesn't know.",
     (p) => ["--for-model", "ask", String(p.question)],
     Type.Object({ question: Type.String({ description: "The question, in plain English" }) }));
+
+  // /cnlp <command>: read-only cnlp output shown straight to the user, no model involved (see commands.ts).
+  // Output is a session entry (not sent to the model) drawn by an entry renderer; --share also queues it
+  // as a hidden custom message for the model's next turn.
+  pi.registerEntryRenderer("cnlp-output", (entry: any, _opts: any, theme: any) => {
+    const d = (entry.data ?? {}) as { title?: string; text?: string };
+    return new Text(theme.fg("accent", d.title ?? "cnlp") + "\n" + (d.text ?? ""), 1, 0);
+  });
+
+  pi.registerCommand("cnlp", {
+    description: "Run a read-only cnlp command and show its output (status, audit, evidence, rules, verify-plan, try, doctor, help). Add --share to give the output to the model.",
+    getArgumentCompletions: (prefix: string) => {
+      const subs = ["status", "audit", "evidence", "rules", "verify-plan", "try", "doctor", "config", "check-pins", "check-fsm", "lint", "render", "help"];
+      const m = subs.filter((c) => c.startsWith(prefix)).map((c) => ({ value: c, label: c }));
+      return m.length ? m : null;
+    },
+    handler: async (args, ctx) => {
+      const show = (title: string, text: string, level: "info" | "warning" | "error" = "info") => {
+        if (ctx.mode === "tui") pi.appendEntry("cnlp-output", { title, text });
+        else if (ctx.hasUI) ctx.ui.notify(`${title}\n${text}`, level);
+        else process.stdout.write(`${title}\n${text}\n`);
+      };
+      const parsed = parseSlash(args, { cnlpRoot: CNLP_ROOT, projectsDir: PROJECTS_DIR, cwd: ctx.cwd });
+      if ("refuse" in parsed) return show("cnlp", parsed.refuse, "warning");
+      if ("text" in parsed) return show("cnlp help", parsed.text);
+      const title = `$ cnlp ${parsed.argv.join(" ")}`;
+      let r: Run;
+      try { r = await run(parsed.argv, ctx.cwd, undefined, 120_000); }
+      catch (e) { return show(title, `could not run cnlp: ${(e as Error).message}`, "error"); }
+      show(title, r.text, r.code >= 2 ? "error" : "info");
+      if (parsed.share) {
+        pi.sendMessage({ customType: "cnlp-share", display: false,
+          content: `The user ran \`${title.slice(2)}\` and saw this output:\n\n${r.text}` }, { deliverAs: "nextTurn" });
+      }
+    },
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     const r = await run(["config", "."], ctx.cwd, undefined, 10_000).catch(() => null);

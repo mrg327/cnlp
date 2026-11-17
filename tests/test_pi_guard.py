@@ -21,6 +21,6 @@ def _supports_ts(node: str) -> bool:
 def test_guard_node_tests():
     if not _supports_ts(NODE):
         pytest.skip("node too old for TypeScript type stripping (need >= 22.18)")
-    r = subprocess.run([NODE, "--test", str(DIR / "guard.test.mjs")], check=False, capture_output=True, text=True,
+    r = subprocess.run([NODE, "--test", str(DIR / "guard.test.mjs"), str(DIR / "commands.test.mjs")], check=False, capture_output=True, text=True,
                        timeout=120)
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-1000:]

@@ -76,7 +76,7 @@ function ansiC(s: string): string {
   });
 }
 
-function parseScript(src: string): { cmds: Cmd[]; subs: string[] } {
+export function parseScript(src: string): { cmds: Cmd[]; subs: string[] } {
   const t = src.replace(/\\\r?\n/g, "");
   const cmds: Cmd[] = [];
   const subs: string[] = [];
