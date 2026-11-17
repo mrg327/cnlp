@@ -30,6 +30,7 @@ def complete(
     max_tokens: int = 1500,
     seed: int | None = None,
     timeout: float = 300,
+    json_schema: dict | None = None,
 ) -> str:
     """One chat completion; returns the reply text. No tools (grammar and tools clash)."""
     url = base_url()
@@ -44,6 +45,8 @@ def complete(
     }
     if grammar:
         body["grammar"] = grammar
+    if json_schema:
+        body["response_format"] = {"type": "json_object", "schema": json_schema}
     if seed is not None:
         body["seed"] = seed
     req = urllib.request.Request(

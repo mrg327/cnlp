@@ -1,0 +1,9 @@
+# tiny plan
+chip is esp32.
+module is esp32-wroom-32.
+board is devkit-v1.
+wifi is off.
+bluetooth is off.
+console is on uart0.
+gpio 4 is output "led" with no pull.
+gpio 35 is input "knob" with external pull-up.

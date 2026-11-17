@@ -309,6 +309,27 @@ def fmt_audit(obj: dict, st: Style) -> str:
     return "\n".join(lines)
 
 
+def fmt_measure(obj: dict, st: Style) -> str:
+    if "reply" in obj:
+        return f"{obj['query']} {st.c('dim', '->')} {obj['reply']}"
+    from cnlp.measure import KIND_LABEL
+
+    h = obj["human"]
+    label = KIND_LABEL.get(obj["kind"], obj["kind"])
+    where = f"CH{obj['channel']}" + (f"->CH{obj['channel2']}" if obj.get("channel2") else "")
+    line = (f"{label} on {where}: mean {h['mean']} (min {h['min']}, max {h['max']}, "
+            f"{'σ' if st.uni else 'sigma'} {h['std']}, n={obj['n']})")
+    chk = obj.get("check")
+    if chk:
+        line += f"  {st.sym('ok' if chk['ok'] else 'error')} " + (
+            f"meets \"{chk['criterion']}\"" if chk["ok"] else f"fails \"{chk['criterion']}\"")
+    lines = [line]
+    rec = obj.get("recorded")
+    if rec:
+        lines.append(f"Recorded {rec['req']} {rec['type']} {rec['result']}")
+    return "\n".join(lines)
+
+
 def fmt_evidence(obj: dict, st: Style) -> str:
     s = obj.get("summary", {})
     rows = obj.get("rows", [])
@@ -360,3 +381,67 @@ def fmt_evidence_add(obj: dict, st: Style) -> str:
     sym = st.sym("ok" if result == "pass" else "error")
     return f"{sym} Recorded {obj.get('req')} {obj.get('type')} {result}" + (
         f" ({detail})" if detail else "")
+
+
+def fmt_status(obj: dict, st: Style) -> str:
+    ph = obj.get("phase", {})
+    cur = ph.get("current")
+    head = "Synth status"
+    if cur:
+        head += (f" {st.dash} phase {cur['n']} of {ph.get('last')}: {cur['name']} "
+                 f"({str(cur['status']).replace('_', ' ')})   "
+                 f"[{ph.get('done_count', 0)} of {ph.get('total', 0)} done]")
+    elif ph.get("total"):
+        head += f" {st.dash} all {ph['total']} phases done"
+    else:
+        head += f" {st.dash} phase information unavailable"
+    a = obj.get("audit", {})
+    e, w = a.get("errors", 0), a.get("warnings", 0)
+    unused = obj.get("unused_pins", [])
+    w_other = max(w - len(unused), 0)
+    bits = [plural(e, "error") if e else "no errors"]
+    bits.append(plural(w_other, "warning") if w_other else "no other warnings")
+    extra = (" (" + ", ".join(f"GPIO {g}" for g in a["strapping"]) + " strapping)") if a.get("strapping") else ""
+    lines = [head,
+             f"{st.sym('error' if e else 'ok')} Audit      {', '.join(bits)}{extra}"]
+    rt = obj.get("realtime", {})
+    rtf = rt.get("findings", [])
+    lines.append(f"{st.sym('ok') if rt.get('clean') else st.sym('error')} Real-time  "
+                 + ("RT checks clean" if rt.get("clean") else f"{plural(len(rtf), 'finding')}"))
+    for f in rtf:
+        lines.append(_wrap("    ", "    ", f"{f.get('rule')}: {f.get('message', '')}", st.width))
+    ev = obj.get("evidence", {}).get("summary", {})
+    fail, gaps = ev.get("fail", 0), ev.get("missing", 0) + ev.get("stale", 0)
+    sev = "error" if fail else ("warning" if gaps else "ok")
+    ev_line = (f"{st.sym(sev)} Evidence   {ev.get('pass', 0)} of {ev.get('total', 0)} pass, "
+               f"{ev.get('missing', 0)} missing")
+    if fail:
+        ev_line += f", {fail} fail"
+    if ev.get("stale"):
+        ev_line += f", {ev['stale']} stale"
+    xp = obj.get("evidence", {}).get("expected_phase")
+    if gaps and not fail and xp is not None:
+        ev_line += f" (expected before phase {xp})"
+    lines.append(ev_line)
+    for f in obj.get("status_findings", []):
+        lines.append(_wrap("  ! ", "  ! ", f["message"], st.width))
+    if unused:
+        lines.append("Pins not configured yet:")
+        for u in unused:
+            p = u.get("phase")
+            where = f"phase {p['n']} {p['name']}" + (
+                f" ({str(p['status']).replace('_', ' ')})" if p["status"] != "not_started" else ""
+            ) if p else "no phase mentions it"
+            lines.append(f"  GPIO {str(u['gpio']).ljust(3)}{str(u['role']).ljust(14)} {where}")
+    if obj.get("next_check"):
+        lines.append(_wrap("This phase's check: ", "This phase's check: ", obj["next_check"], st.width))
+    rel_rows = obj.get("evidence", {}).get("relevant", [])
+    if rel_rows:
+        def lab(r: dict) -> str:
+            return f"{r['req']} ({r['tests'][0]})" if r.get("tests") else r["req"]
+        lines.append(_wrap("Requirements this phase can evidence: ",
+                           "Requirements this phase can evidence: ",
+                           ", ".join(lab(r) for r in rel_rows), st.width))
+    for n in obj.get("notes", []) or []:
+        lines.append(_wrap("  - ", "  - ", str(n), st.width))
+    return "\n".join(lines)

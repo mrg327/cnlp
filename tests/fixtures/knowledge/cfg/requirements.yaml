@@ -1,0 +1,6 @@
+spec: docs/spec.md
+requirements:
+  R1: {kind: timing, accepts: [measured_scope], static_checks: [RT1_AUDIO_BLOCKING]}
+  R2: {kind: functional, accepts: [tested]}
+  F1: {kind: functional, accepts: [tested, reviewed]}
+  F2: {kind: functional, accepts: [reviewed]}

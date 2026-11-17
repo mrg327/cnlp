@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 from collections import Counter
@@ -302,7 +303,13 @@ def _snapshot(target: Path, sources: list[str], dest: Path) -> dict[str, Any]:
 
 
 def projects_root() -> Path:
-    """cnlp's `projects/` folder (configs live in the cnlp repo, never in the target)."""
+    """cnlp's `projects/` folder (configs live in the cnlp repo, never in the target).
+
+    `CNLP_PROJECTS_DIR` overrides it, e.g. to point tests at configs in a temp dir.
+    """
+    override = os.environ.get("CNLP_PROJECTS_DIR")
+    if override:
+        return Path(override).expanduser()
     return Path(__file__).resolve().parents[2] / "projects"
 
 

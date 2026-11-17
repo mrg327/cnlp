@@ -53,6 +53,29 @@ def _out(a: argparse.Namespace, obj: Any) -> None:
     sys.stdout.write(_formatter(a)(obj, st) + "\n")
 
 
+def cmd_ask(a: argparse.Namespace) -> int:
+    from cnlp import ask as asker
+    from cnlp import audit, llm, output
+
+    cfg = None
+    try:  # explicit config, else the project in the current directory, else tool-only
+        cfg = audit.find_config(Path(a.project_config or "."))
+    except audit.AuditError:
+        if a.project_config:
+            _out(a, {"ok": False, "error": f"No cnlp config for {a.project_config}"})
+            return 2
+    try:
+        res = asker.ask(a.question, cfg, run=a.run)
+    except llm.LlmError as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+    if getattr(a, "json", False):
+        _emit(res.to_dict())
+    else:
+        sys.stdout.write(asker.format_text(res, output.Style(project=str(a.project))) + "\n")
+    return 1 if res.kind == "unknown" else 0
+
+
 def _manifest_path(project: Path) -> Path:
     return project / ".cnlp" / "manifest.yaml"
 
@@ -212,6 +235,46 @@ def cmd_readback(a: argparse.Namespace) -> int:
     return 0 if not diffs else 1
 
 
+def cmd_measure(a: argparse.Namespace) -> int:
+    from cnlp import audit, evidence, measure
+
+    try:
+        if a.raw_query is None and not a.kind:
+            raise measure.MeasureError("give a measurement kind ("
+                                       + ", ".join(measure.KINDS) + ") or --raw-query")
+        if a.record and a.raw_query is not None:
+            raise measure.MeasureError("--record can't be combined with --raw-query")
+        if a.record and not a.criterion:
+            raise measure.MeasureError("--record requires --criterion")
+        if a.criterion:
+            measure.parse_criterion(a.criterion)  # fail before touching the instrument
+        cfg = None
+        if a.record:
+            cfg = audit.find_config(Path(a.record[0]))
+        sc = measure.connect(a.resource)
+        try:
+            if a.raw_query is not None:
+                _out(a, measure.raw_query(sc, a.raw_query))
+                return 0
+            res = measure.measure(sc, a.kind, a.ch, a.ch2, a.samples, a.interval)
+        finally:
+            sc.close()
+        rc = 0
+        if a.criterion:
+            ok, why = measure.check(res, a.criterion)
+            res["check"] = {"criterion": a.criterion, "ok": ok, "explanation": why}
+            rc = 0 if ok else 1
+            if cfg is not None:
+                rec = measure.record(cfg, a.record[1], res, a.criterion, ok, a.source_note or "")
+                res["recorded"] = {"req": a.record[1], "type": "measured_scope",
+                                   "result": "pass" if ok else "fail", **rec}
+        _out(a, res)
+        return rc
+    except (measure.MeasureError, audit.AuditError, evidence.EvidenceError) as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+
+
 def cmd_evidence(a: argparse.Namespace) -> int:
     from cnlp import audit
 
@@ -249,6 +312,18 @@ def cmd_evidence(a: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_status(a: argparse.Namespace) -> int:
+    from cnlp import audit, status
+
+    try:
+        result = status.status(audit.find_config(Path(a.config)))
+    except (audit.AuditError, ValueError, KeyError, OSError) as e:
+        _out(a, {"ok": False, "error": str(e)})
+        return 2
+    _out(a, result)
+    return 0 if result.get("ok") else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cnlp", description=__doc__.splitlines()[0])
     p.add_argument("--project", type=Path, default=Path("."))
@@ -271,6 +346,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("-n", type=int, default=3, help="samples for self-consistency")
     s.add_argument("--board", default="devkit-v1")
     s.set_defaults(fn=cmd_spec)
+
+    s = sub.add_parser("ask", help="ask a question about cnlp, your project or the board")
+    s.add_argument("question")
+    s.add_argument("--project-config", help="project dir or cnlp config (default: current dir)")
+    s.add_argument("--run", action="store_true", help="run the suggested command if it is read-only")
+    s.set_defaults(fn=cmd_ask)
 
     sub.add_parser("render", help="manifest -> controlled English").set_defaults(fn=cmd_render)
 
@@ -316,6 +397,21 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("log")
     s.set_defaults(fn=cmd_readback)
 
+    s = sub.add_parser("measure", help="read the bench scope over SCPI; optionally record evidence")
+    s.add_argument("kind", nargs="?", choices=["period", "frequency", "pwidth", "nwidth",
+                                               "duty", "delay"])
+    s.add_argument("--ch", type=int, default=1)
+    s.add_argument("--ch2", type=int, help="second channel for delay (default 2)")
+    s.add_argument("--samples", type=int, default=20)
+    s.add_argument("--interval", type=float, default=0.2, help="seconds between samples")
+    s.add_argument("--resource", help="VISA resource (default: SCOPE_RESOURCE or LAN search)")
+    s.add_argument("--criterion", help='e.g. "< 1.6 ms", "1 ms ±2%%", "max < 2.67 ms"')
+    s.add_argument("--record", nargs=2, metavar=("PROJECT", "REQ"),
+                   help="record as measured_scope evidence (needs --criterion)")
+    s.add_argument("--source-note", dest="source_note", help="note stored with the evidence")
+    s.add_argument("--raw-query", dest="raw_query", help="send one SCPI query and print the reply")
+    s.set_defaults(fn=cmd_measure)
+
     s = sub.add_parser("evidence", help="requirements evidence matrix; `evidence add` records one")
     s.add_argument("args", nargs="+", metavar="config | add config REQ type pass|fail")
     s.add_argument("--value")
@@ -324,6 +420,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--source")
     s.add_argument("--note")
     s.set_defaults(fn=cmd_evidence)
+
+    s = sub.add_parser("status", help="build phase plus audit/real-time/evidence summary")
+    s.add_argument("config", help="audit.yaml, its folder, or the target project directory")
+    s.set_defaults(fn=cmd_status)
     return p
 
 
