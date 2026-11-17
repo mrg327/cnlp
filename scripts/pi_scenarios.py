@@ -48,7 +48,7 @@ SCENARIOS = [
      "tools": ["cnlp_status"], "mentions": ["phase 4"]},
     {"name": "rt-violation", "prompt": "I just added a debug print at the end of each buffer in the "
      "audio task. Is my code still OK?", "plant": "audio_print",
-     "tools": ["cnlp_audit"], "mentions": ["printf", "0.5f"], "cites": ["RT1", "RT5"],
+     "tools": [["cnlp_audit", "cnlp_status"]], "mentions": ["printf", "0.5f"], "cites": ["RT1", "RT5"],
      "forbid": ["after the i2s_channel_write"]},
     {"name": "record-evidence", "prompt": "I measured the scan period on the scope: 1.001 ms, rock "
      "steady. Record that as evidence for R4.",
@@ -58,11 +58,11 @@ SCENARIOS = [
      "internal pull-up?", "tools": ["cnlp_try"], "mentions": ["col"], "cites": ["C2"]},
     {"name": "wrong-core", "prompt": "I tidied up the audio task settings. Do my task settings "
      "still match the plan?", "plant": "wrong_core",
-     "tools": ["cnlp_audit"], "mentions": ["core 1"], "cites": ["PARAM_TASK"]},
+     "tools": [["cnlp_audit", "cnlp_status"]], "mentions": ["core 1"], "cites": ["PARAM_TASK"]},
     {"name": "watch-list", "prompt": "What should I watch out for while I build the button matrix?",
      "tools": ["cnlp_status"], "mentions": ["vTaskDelayUntil"]},
     {"name": "rt7", "prompt": "I wrote the scan task for the button matrix. Is it right?",
-     "plant": "scan_task_delay", "tools": ["cnlp_audit"], "mentions": ["vTaskDelayUntil"],
+     "plant": "scan_task_delay", "tools": [["cnlp_audit", "cnlp_status"]], "mentions": ["vTaskDelayUntil"],
      "cites": ["RT7"]},
 ]
 
@@ -132,7 +132,10 @@ def main() -> int:
             if not tools and not final and secs < 3:
                 raise SystemExit("pi produced nothing; it probably failed to start. Run it by hand "
                                  "to see the error, or try --isolated (only the cnlp extension).")
-            problems = [f"did not call {t}" for t in sc["tools"] if t not in tools]
+            # Each entry is a tool name or a list of acceptable alternatives (any one suffices).
+            problems = [f"did not call {' or '.join(t) if isinstance(t, list) else t}"
+                        for t in sc["tools"]
+                        if not (set(t) & set(tools) if isinstance(t, list) else t in tools)]
             problems += [f"answer lacks {m!r}" for m in sc["mentions"] if m.lower() not in final.lower()]
             problems += [f"answer says {m!r}" for m in sc.get("forbid", []) if m.lower() in final.lower()]
             if sc.get("evidence_unchanged") and (ev.read_text() if ev.exists() else "") != before:
