@@ -484,7 +484,7 @@ def _stage2(client, plan: list[dict], request: str, seed: int) -> tuple[str, lis
     """Write the machine/state lines under the plan's grammar. Returns (lines, messages, raw)."""
     messages = nl_fsm.write_messages(plan, request)
     raw = nl_fsm.write(client, messages, plan, seed, *_fsm_limits(request))
-    return nl_fsm.sort_transitions(_strip_end(raw)), messages, raw
+    return nl_fsm.finish(_strip_end(raw), request), messages, raw
 
 
 def _one_sample(client, messages: list[dict], seed: int, board: str, request: str = "",
@@ -533,7 +533,7 @@ def _one_sample(client, messages: list[dict], seed: int, board: str, request: st
                  + "\n".join(f"- {x}" for x in found)
                  + "\nWrite all the machine lines again with them fixed, ending with END."}]
             raw3 = nl_fsm.write(client, retry, plan, seed + 400, *_fsm_limits(request))
-            fsm3 = nl_fsm.sort_transitions(_strip_end(raw3))
+            fsm3 = nl_fsm.finish(_strip_end(raw3), request)
             try:
                 full3, notes3 = _ensure_defaults(text + fsm3, board)
                 m3 = cnl.parse(full3)

@@ -467,3 +467,43 @@ def test_resistor_pullup_without_internal_wording_is_external():
     two = t + '\ngpio 4 is input "b2" with internal pull-up.'
     r = _one(two, "buttons on 14 and 4, a 10k pull-up resistor on the board")
     assert {p.pull for p in r.manifest.pins} == {"internal_up"}
+
+
+def test_plan_timers_validated():
+    from cnlp import nl_fsm
+    base = json.loads(PLAN_JSON)["machines"][0]
+    ok, errs = nl_fsm.validate_plan({"machines": [{**base, "timers": ["Error"]}]})
+    assert not errs and ok[0]["timers"] == ["error"]
+    assert nl_fsm.validate_plan({"machines": [{**base, "timers": ["nowhere"]}]})[1]
+    assert nl_fsm.validate_plan({"machines": [base]})[0][0]["timers"] == []
+
+
+def test_timeout_event_becomes_timer_only_for_one_clear_duration():
+    from cnlp import nl_fsm
+    fake = "machine p starts in stopped.\nstate stopped: on button press go to running.\n" \
+           "state running: on button press go to stopped; on timeout go to stopped.\n"
+    got = nl_fsm.finish(fake, "start button; it runs; after 30 secs it stops by itself (timeout)")
+    assert "state running: after 30 s go to stopped; on button press go to stopped." in got
+    assert "on timeout" not in got
+    assert nl_fsm.finish(fake, "it runs, then stops on a timeout") == nl_fsm.sort_transitions(fake)  # no duration
+    assert nl_fsm.finish(fake, "stops after 30 s or 2 min") == nl_fsm.sort_transitions(fake)         # ambiguous
+    assert nl_fsm.finish(fake, "read every 10 s; it times out") == nl_fsm.sort_transitions(fake)     # 'every' is not a timer
+    assert "after 2 min go to stopped" in nl_fsm.finish(fake, "times out after 2 minutes")
+    assert "after 250 ms go to stopped" in nl_fsm.finish(fake, "times out after 250 milliseconds")
+
+
+def test_stage2_prompt_explains_timers_and_plan_outline():
+    from cnlp import nl_fsm
+    m = [{"name": "t", "states": ["a", "b"], "start": "a", "events": [], "actions": [], "timers": ["b"]}]
+    assert "timers b" in nl_fsm.outline(m)
+    sys = nl_fsm.write_messages(m, "b lasts 5 s")[0]["content"]
+    assert "timer" in sys and "after 20 s go to idle" in sys and "after 3 read failed" in sys
+    m[0]["timers"] = []
+    assert "timers" not in nl_fsm.outline(m)
+    assert nl_fsm.write_messages(m, "x")[0]["content"] == nl_fsm.WRITE_PROMPT
+
+
+def test_sort_transitions_drops_exact_repeats():
+    from cnlp import nl_fsm
+    assert nl_fsm.sort_transitions("state a: on x go to b; on x go to b; on y go to a.\n") \
+        == "state a: on x go to b; on y go to a.\n"

@@ -16,6 +16,12 @@ typedef struct {
     {{ m.name }}_action_t action_id;
 } {{ m.name }}_periodic_t;
 
+typedef struct {
+    {{ m.name }}_state_t state;
+    uint32_t period_ms;
+    {{ m.name }}_state_t next;
+} {{ m.name }}_timeout_t;
+
 /* The last row of each table is a sentinel and never matches. */
 static const {{ m.name }}_transition_t transitions[] = {
 {% for r in m.rows %}
@@ -31,8 +37,16 @@ static const {{ m.name }}_periodic_t periodic[] = {
     { {{ m.NAME }}_STATE_COUNT, 0u, {{ m.NAME }}_ACTION_NONE }
 };
 
-#define N_ROWS (sizeof transitions / sizeof transitions[0] - 1u)
-#define N_PERIODIC (sizeof periodic / sizeof periodic[0] - 1u)
+static const {{ m.name }}_timeout_t timeouts[] = {
+{% for t in m.timeouts %}
+    { {{ t.state }}, {{ t.period_ms }}u, {{ t.next }} }, /* {{ t.text }} */
+{% endfor %}
+    { {{ m.NAME }}_STATE_COUNT, 0u, {{ m.NAME }}_STATE_COUNT }
+};
+
+#define N_ROWS (sizeof transitions / sizeof transitions[0]) /* includes the sentinel row */
+#define N_PERIODIC (sizeof periodic / sizeof periodic[0]) /* includes the sentinel row */
+#define N_TIMEOUTS (sizeof timeouts / sizeof timeouts[0]) /* includes the sentinel row */
 
 static void enter({{ m.name }}_ctx_t *ctx, {{ m.name }}_state_t state)
 {
@@ -43,17 +57,28 @@ static void enter({{ m.name }}_ctx_t *ctx, {{ m.name }}_state_t state)
     ctx->entered = true;
 }
 
+/* Start the timers of the state just entered from now_ms. */
+static void stamp({{ m.name }}_ctx_t *ctx, uint32_t now_ms)
+{
+    for (size_t i = 0; i < sizeof ctx->last_ms / sizeof ctx->last_ms[0]; i++) {
+        ctx->last_ms[i] = now_ms;
+    }
+    ctx->entered_ms = now_ms;
+    ctx->entered = false;
+}
+
 void {{ m.name }}_init({{ m.name }}_ctx_t *ctx)
 {
     for (size_t i = 0; i < sizeof ctx->last_ms / sizeof ctx->last_ms[0]; i++) {
         ctx->last_ms[i] = 0;
     }
+    ctx->entered_ms = 0;
     enter(ctx, {{ m.start_enum }});
 }
 
 {{ m.name }}_state_t {{ m.name }}_dispatch({{ m.name }}_ctx_t *ctx, {{ m.name }}_event_t event)
 {
-    for (size_t i = 0; i < N_ROWS; i++) {
+    for (size_t i = 0; i + 1u < N_ROWS; i++) {
         const {{ m.name }}_transition_t *t = &transitions[i];
         if (t->state != ctx->state || t->event != event) {
             continue;
@@ -73,12 +98,17 @@ void {{ m.name }}_init({{ m.name }}_ctx_t *ctx)
 void {{ m.name }}_tick({{ m.name }}_ctx_t *ctx, uint32_t now_ms, void (*run)({{ m.name }}_action_t))
 {
     if (ctx->entered) {
-        for (size_t i = 0; i < sizeof ctx->last_ms / sizeof ctx->last_ms[0]; i++) {
-            ctx->last_ms[i] = now_ms;
-        }
-        ctx->entered = false;
+        stamp(ctx, now_ms);
     }
-    for (size_t i = 0; i < N_PERIODIC; i++) {
+    for (size_t i = 0; i + 1u < N_TIMEOUTS; i++) {
+        const {{ m.name }}_timeout_t *t = &timeouts[i];
+        if (t->state == ctx->state && (uint32_t)(now_ms - ctx->entered_ms) >= t->period_ms) {
+            enter(ctx, t->next);
+            stamp(ctx, now_ms);
+            return;
+        }
+    }
+    for (size_t i = 0; i + 1u < N_PERIODIC; i++) {
         const {{ m.name }}_periodic_t *p = &periodic[i];
         if (p->state == ctx->state && (uint32_t)(now_ms - ctx->last_ms[i]) >= p->period_ms) {
             ctx->last_ms[i] = now_ms;

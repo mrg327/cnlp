@@ -169,3 +169,28 @@ def test_durations():
 ])
 def test_machine_errors(bad, msg):
     assert msg in err(BASE + bad)[0]["message"]
+
+
+def test_timer_round_trip_and_units():
+    m = cnl.parse(BASE + "machine a starts in s.\nstate s: after 20 s go to t; after 3 read failed go to t; "
+                  "after 90 s go to t; after 2 min go to t; after 250 ms go to t.\nstate t.\n")
+    ts = m.state_machines[0].states[0].transitions
+    assert [(t.kind, t.period_ms, t.count, t.target) for t in ts] == [
+        ("timeout", 20000, None, "t"), ("after", None, 3, "t"), ("timeout", 90000, None, "t"),
+        ("timeout", 120000, None, "t"), ("timeout", 250, None, "t")]
+    text = cnl.render(m)
+    assert ("state s: after 20 s go to t; after 3 read failed go to t; after 90 s go to t; "
+            "after 2 min go to t; after 250 ms go to t.") in text
+    assert cnl.parse(text) == m and cnl.render(cnl.parse(text)) == text
+    assert cnl.parse(BASE + "machine a starts in s.\nstate s: after 60 s go to s.\n").state_machines[0] \
+        .states[0].transitions[0].period_ms == 60000
+    assert "after 1 min go to s" in cnl.render(
+        cnl.parse(BASE + "machine a starts in s.\nstate s: after 60 s go to s.\n"))
+
+
+@pytest.mark.parametrize("bad", [
+    "after 20 s go idle", "after 20 s", "after 0 s go to s", "after 20 s go to on", "after 20 s do x",
+])
+def test_timer_errors(bad):
+    with pytest.raises(cnl.CnlError):
+        cnl.parse(BASE + f"machine a starts in s.\nstate s: {bad}.\n")

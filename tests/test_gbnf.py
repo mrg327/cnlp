@@ -144,3 +144,22 @@ def test_fsm_grammar_numbers_come_from_the_request():
     none = Lark(_to_lark(fsm_grammar(PLAN, set())), parser="earley", lexer="dynamic")
     assert accepts(none, head + "state busy: on button press go to idle.\n")
     assert not accepts(none, head + "state busy: every 10 s do read sensor.\n")
+
+
+def test_fsm_grammar_timers_only_for_planned_states_with_request_numbers():
+    from cnlp.gbnf import fsm_grammar
+    plan = [{**PLAN[0], "timers": ["busy"]}]
+    p = Lark(_to_lark(fsm_grammar(plan, {20}, {"s"})), parser="earley", lexer="dynamic")
+    head = "machine sensor starts in idle.\n"
+    idle = "state idle: on button press go to busy.\n"
+    assert accepts(p, head + idle + "state busy: after 20 s go to idle.\n")
+    assert accepts(p, head + idle + "state busy: on button press go to idle; after 20 s go to idle.\n")
+    assert accepts(p, head + idle + "state busy: on button press go to idle.\n")
+    assert not accepts(p, head + idle + "state busy: after 30 s go to idle.\n")      # number not in request
+    assert not accepts(p, head + idle + "state busy: after 20 min go to idle.\n")    # unit not in request
+    assert not accepts(p, head + idle + "state busy: after 20 s go to nowhere.\n")   # unplanned state
+    assert not accepts(p, head + "state idle: after 20 s go to busy.\nstate busy: on button press go to idle.\n")
+    # no unit or no number in the request: no timers at all
+    for nums, units in (({20}, set()), (set(), {"s"})):
+        q = Lark(_to_lark(fsm_grammar(plan, nums, units)), parser="earley", lexer="dynamic")
+        assert not accepts(q, head + idle + "state busy: after 20 s go to idle.\n")

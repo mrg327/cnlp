@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from cnlp import codegen, manifest
+from cnlp import cnl, codegen, manifest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "manifests" / "blinky.yaml"
 
@@ -122,3 +122,15 @@ def test_fsm_unknown_target_refused(tmp_path):
                    "machine a starts in s.\nstate s: on x go to nowhere.\n")
     with pytest.raises(codegen.CodegenError):
         codegen.generate(mm, tmp_path)
+
+
+def test_timeout_table_generated_deterministically(tmp_path):
+    m = cnl.parse("chip is esp32.\nmodule is esp32-wroom-32.\nboard is b1.\n"
+                  "machine lamp starts in dark.\nstate dark: on button press go to lit.\n"
+                  "state lit: after 2 min go to dark; on button press go to dark.\n")
+    codegen.generate(m, tmp_path / "a")
+    codegen.generate(m, tmp_path / "b")
+    c = (tmp_path / "a" / "fsm_lamp.c").read_text()
+    assert "{ LAMP_STATE_LIT, 120000u, LAMP_STATE_DARK }" in c
+    assert c == (tmp_path / "b" / "fsm_lamp.c").read_text()
+    assert "LAMP_EVENT_TIMEOUT" not in (tmp_path / "a" / "include" / "fsm_lamp.h").read_text()

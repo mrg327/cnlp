@@ -579,8 +579,8 @@
     gpio 14 is input "start button" with external pull-up.
     machine pump starts in stopped.
     state stopped: on button press go to running.
-    state running: on button press go to stopped; on timeout go to stopped.
-  notes: "A 30 s timeout cannot be written as 'after 30 s' in this grammar; 'on timeout' is the only expressible form. Acceptable alternatives: an event named after the timeout. Graders should only check structure."
+    state running: on button press go to stopped; after 30 s go to stopped.
+  notes: "The 30 s self-stop is a timer transition ('after 30 s go to stopped'), not a counted event. Graders check structure (machine and state counts)."
 
 - id: fsm-004
   category: state_machine
@@ -668,10 +668,10 @@
     gpio 26 is output "yellow" with no pull.
     gpio 27 is output "green" with no pull.
     machine light starts in red.
-    state red: on red done go to green.
-    state green: on green done go to yellow.
-    state yellow: on yellow done go to red.
-  notes: "The grammar has no 'after N s go to' timeout form, only counted events, so durations (20 s, 15 s, 3 s) cannot be encoded as stated. A faithful translator should either use done-events and ask how the durations are produced, or mention the limitation. Graders should check structure only and expect a question about timing."
+    state red: after 20 s go to green.
+    state green: after 15 s go to yellow.
+    state yellow: after 3 s go to red.
+  notes: "Phase durations are timer transitions (after 20/15/3 s), in the request's order red -> green -> yellow -> red. Graders check structure (machine and state counts)."
 
 - id: fsm-009
   category: state_machine
