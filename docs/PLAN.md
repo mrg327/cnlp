@@ -188,10 +188,9 @@ Fixes that got it there: scoring substance separately from citations, and
 naming "what to watch for / do next" questions in the extension's guidance
 so Qwen uses the status watch-list instead of reading the procedure.
 
-`--isolated` loads only the cnlp extension. Needed because pi-subagents
-0.89.0 (updated 2026-11-17 12:52) rejects `modelExclusions` in
-`~/.pi/agent/extensions/subagent/config.json`, so Pi does not start with the
-user's full extension set until that key is removed (user's call).
+`--isolated` loads only the cnlp extension (useful when another extension
+breaks Pi's startup, as pi-subagents 0.89.0's config change did briefly on
+2026-11-17). With the user's full extension set, all 7 scenarios pass.
 
 ## cnlp ask and the knowledge index (2026-11-17)
 
