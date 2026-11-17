@@ -361,16 +361,6 @@ def _parse_transition(words: list[str]) -> tuple[Transition | None, str | None]:
     head = words[0]
     if head == "on":
         return goto(words[1:], "on", None)
-    if head == "after" and len(words) >= 3 and words[2] in _UNIT_MS:
-        # A time unit right after the number makes this a timer: 'after 20 s go to idle'.
-        if len(words) != 6 or words[3:5] != ["go", "to"] or not re.match(r"[0-9]+$", words[1]):
-            return None, "a timer must look like 'after 20 s go to idle' (units: ms, s or min)."
-        ms = int(words[1]) * _UNIT_MS[words[2]]
-        if ms < 1:
-            return None, "the time after 'after' must be more than zero."
-        if (err := _fsm_name(words[5], "state")) is not None:
-            return None, err
-        return Transition(kind="timeout", target=words[5], period_ms=ms), None
     if head == "after":
         if len(words) < 2 or not re.match(r"[0-9]+$", words[1]) or int(words[1]) < 1:
             return None, "'after' needs a whole number of at least 1, e.g. 'after 3 read failed go to error'."
@@ -443,8 +433,6 @@ def _duration_text(ms: int) -> str:
 def _transition_text(t: Transition) -> str:
     if t.kind == "every":
         return f"every {_duration_text(t.period_ms or 0)} do {(t.action or '').replace('_', ' ')}"
-    if t.kind == "timeout":
-        return f"after {_duration_text(t.period_ms or 0)} go to {t.target}"
     ev = (t.event or "").replace("_", " ")
     if t.kind == "after":
         return f"after {t.count} {ev} go to {t.target}"

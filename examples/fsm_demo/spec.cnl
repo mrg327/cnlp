@@ -8,4 +8,4 @@ gpio 4 is input "button" with internal pull-up.
 machine sensor starts in idle.
 state idle: on button press go to measuring.
 state measuring: every 10 s do read sensor; on read ok go to idle; after 3 read failed go to error.
-state error: on button press go to idle; after 30 s go to idle.
+state error: on button press go to idle.

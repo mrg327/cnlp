@@ -78,9 +78,7 @@ def fsm_grammar(machines: list[dict], numbers: set[int] | None = None,
     states once in the given order; transition targets, events and actions can
     only be the planned ones. ``numbers`` limits counts and periods to numbers the
     request states (empty: no ``after``/``every`` transitions at all); ``units`` limits
-    ``every`` to the time units the request uses (ms, s, min). A machine's optional
-    ``timers`` lists the states that may leave by themselves: each of them may have one
-    ``after NUM UNIT go to STATE`` (only when the request states a number and a unit).
+    ``every`` to the time units the request uses (ms, s, min).
     """
 
     def lit(s: str) -> str:
@@ -107,24 +105,11 @@ def fsm_grammar(machines: list[dict], numbers: set[int] | None = None,
             trans.append(f'"every " num " " unit " do " ac{i}')
         if trans:
             rules.append(f"tr{i} ::= " + " | ".join(trans))
-            plain = f'": " tr{i} ("; " tr{i}){{0,7}}'
+            tail = f'(": " tr{i} ("; " tr{i}){{0,7}})?'
         else:
-            plain = ""
-        timers = set(m.get("timers") or []) if numbers is None or numbers else set()
-        if timers and units is not None and not units:
-            timers = set()
-        if timers:
-            rules.append(f'tm{i} ::= "after " num " " unit " go to " st{i}')
-            if trans:
-                timed = f'": " (tr{i} "; "){{0,6}} tm{i} ("; " tr{i}){{0,6}}'
-            else:
-                timed = f'": " tm{i}'
+            tail = ""
         body.append(f'"machine {m["name"]} starts in {m["start"]}." {nl_}')
         for s in m["states"]:
-            if s in timers:
-                tail = f"({plain} | {timed})?" if plain else f"({timed})?"
-            else:
-                tail = f"({plain})?" if plain else ""
             body.append(f'comment? "state {s}" {tail} "." {nl_}')
     return "\n".join([f'root ::= {" ".join(body)} "END"', *rules]) + "\n"
 

@@ -38,7 +38,6 @@ typedef enum {
 
 #define {{ m.NAME }}_N_TRANSITIONS {{ m.rows|length }}
 #define {{ m.NAME }}_N_PERIODIC {{ m.periodic|length }}
-#define {{ m.NAME }}_N_TIMEOUTS {{ m.timeouts|length }}
 
 typedef struct {
     {{ m.name }}_state_t state;
@@ -47,8 +46,6 @@ typedef struct {
     uint32_t counts[{{ [m.rows|length, 1]|max }}];
     /* Periodic timers ('every N s do ACTION'), restarted on every state change. */
     uint32_t last_ms[{{ [m.periodic|length, 1]|max }}];
-    /* Time the current state was entered ('after N s go to ...' timers run from here). */
-    uint32_t entered_ms;
     bool entered;
 } {{ m.name }}_ctx_t;
 
@@ -59,10 +56,8 @@ void {{ m.name }}_init({{ m.name }}_ctx_t *ctx);
  * are ignored. A counted transition fires on its Nth occurrence in the state. */
 {{ m.name }}_state_t {{ m.name }}_dispatch({{ m.name }}_ctx_t *ctx, {{ m.name }}_event_t event);
 
-/* Call regularly with a millisecond clock. Fires the current state's timer
- * ('after N s go to ...') once now - entered >= N, else runs due periodic actions
- * through run(). A state is timed from the first tick after it was entered.
- * Safe against clock wrap-around. */
+/* Call regularly with a millisecond clock; runs due periodic actions of the
+ * current state through run(). Safe against clock wrap-around. */
 void {{ m.name }}_tick({{ m.name }}_ctx_t *ctx, uint32_t now_ms, void (*run)({{ m.name }}_action_t));
 
 /* Names for logging. */

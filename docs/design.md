@@ -500,8 +500,7 @@ machine_stmt = "machine" NAME "starts in" NAME ;     (* declares a machine; late
 state_stmt  = "state" NAME [ ":" transition { ";" transition } ] ;  (* no transitions: a final state *)
 transition  = trigger "go to" NAME
             | "every" DURATION "do" action            (* periodic action; stays in the state *)
-            | "after" INT EVENT "go to" NAME          (* N occurrences of EVENT in this state; reset on leaving *)
-            | "after" DURATION "go to" NAME ;        (* timer: DURATION after entering this state, if nothing else fired *)
+            | "after" INT EVENT "go to" NAME ;        (* N occurrences of EVENT in this state; reset on leaving *)
 trigger     = "on" EVENT ;
 action      = WORD { WORD } ;                         (* "read sensor"; ends at ";" or "." *)
 
@@ -518,7 +517,7 @@ DURATION    = INT ( "ms" | "s" | "min" ) ;
 (* Reserved words, never part of EVENT, NAME or an action: "go", "to", "on", "every", "after", "is", "with", "do" *)
 ```
 
-Events and actions are normalised to snake_case (`button press` becomes `button_press`); durations are stored in milliseconds. A counted `after` transition fires on the Nth occurrence of its event while the machine stays in the state, and the count resets when the state is left. The unit token tells the two `after` forms apart: `after 3 read failed go to error` counts events, `after 20 s go to idle` is a timer (`ms`, `s` or `min`; the unit words are therefore not usable as an event after a count). A timer fires once the state has lasted its duration, counted from the first `tick` after entry; any `on` or counted transition taken first leaves the state and so cancels it, and entering a state (by any route, including a timer) restarts its timers. A state may have at most one timer, and the checker warns when an `every` period in that state is not shorter than the timer, since that action could never run. Example:
+Events and actions are normalised to snake_case (`button press` becomes `button_press`); durations are stored in milliseconds. A counted `after` transition fires on the Nth occurrence of its event while the machine stays in the state, and the count resets when the state is left. Example:
 
 ```
 machine sensor starts in idle.

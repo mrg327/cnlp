@@ -77,7 +77,7 @@ def _machine_ctx(sm: StateMachine) -> dict:
             if t.kind == "every":
                 if t.action not in actions:
                     actions.append(t.action or "")
-            elif t.kind != "timeout" and t.event not in events:
+            elif t.event not in events:
                 events.append(t.event or "")
     events.sort()
     actions.sort()
@@ -88,7 +88,7 @@ def _machine_ctx(sm: StateMachine) -> dict:
             return f"after {t.count} {ev} go to {t.target}"
         return f"on {ev} go to {t.target}"
 
-    rows, periodic, timeouts = [], [], []
+    rows, periodic = [], []
     for s in sm.states:
         for t in s.transitions:
             if t.kind == "every":
@@ -96,12 +96,6 @@ def _machine_ctx(sm: StateMachine) -> dict:
                     "state": st_enum[s.name], "period_ms": t.period_ms,
                     "action": f"{n}_ACTION_{(t.action or '').upper()}",
                     "text": f"{s.name}: every {_dur(t.period_ms or 0)} do {(t.action or '').replace('_', ' ')}",
-                })
-            elif t.kind == "timeout":
-                timeouts.append({
-                    "state": st_enum[s.name], "period_ms": t.period_ms,
-                    "next": st_enum[t.target or ""],
-                    "text": f"{s.name}: after {_dur(t.period_ms or 0)} go to {t.target}",
                 })
             else:
                 rows.append({
@@ -114,7 +108,7 @@ def _machine_ctx(sm: StateMachine) -> dict:
         "states": [{"name": s.name, "enum": st_enum[s.name]} for s in sm.states],
         "events": [{"name": e, "enum": f"{n}_EVENT_{e.upper()}"} for e in events],
         "actions": [{"name": a, "enum": f"{n}_ACTION_{a.upper()}"} for a in actions],
-        "rows": rows, "periodic": periodic, "timeouts": timeouts,
+        "rows": rows, "periodic": periodic,
     }
 
 

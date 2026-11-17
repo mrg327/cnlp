@@ -2,7 +2,7 @@
 
 ``check(m)`` returns Findings (gpio is always None). Rule IDs:
 FSM_UNKNOWN_STATE, FSM_DUPLICATE, FSM_NONDETERMINISTIC, FSM_UNREACHABLE (errors);
-FSM_DEAD_END, FSM_UNHANDLED, FSM_TIMER_SHADOWED (warnings).
+FSM_DEAD_END, FSM_UNHANDLED (warnings).
 """
 
 from __future__ import annotations
@@ -24,13 +24,6 @@ def _join(items: list[str]) -> str:
 
 def _human(ev: str) -> str:
     return ev.replace("_", " ")
-
-
-def _dur(ms: int) -> str:
-    for unit, k in (("min", 60000), ("s", 1000)):
-        if ms % k == 0:
-            return f"{ms // k} {unit}"
-    return f"{ms} ms"
 
 
 def _check_machine(sm: StateMachine) -> list[Finding]:
@@ -58,14 +51,6 @@ def _check_machine(sm: StateMachine) -> list[Finding]:
         for t in st.transitions:
             if t.kind == "every":
                 key = ("every", t.action or "")
-            elif t.kind == "timeout":
-                key = ("timeout", "")
-                if t.target not in declared:
-                    err("FSM_UNKNOWN_STATE",
-                        f"In machine '{sm.name}', state '{st.name}' times out to '{t.target}' "
-                        f"after {_dur(t.period_ms or 0)}, but no state '{t.target}' is declared.")
-                elif st.name in edges:
-                    edges[st.name].add(t.target or "")
             else:
                 key = (t.kind, t.event or "")
                 if t.target not in declared:
@@ -77,10 +62,7 @@ def _check_machine(sm: StateMachine) -> list[Finding]:
             seen[key] = seen.get(key, 0) + 1
         for (kind, what), c in seen.items():
             if c > 1:
-                if kind == "timeout":
-                    msg = (f"In machine '{sm.name}', state '{st.name}' has {c} timers "
-                           "('after N s go to ...'); a state can have only one, so keep one.")
-                elif kind == "every":
+                if kind == "every":
                     msg = (f"In machine '{sm.name}', state '{st.name}' runs "
                            f"'{_human(what)}' periodically {c} times; keep one.")
                 else:
@@ -111,21 +93,10 @@ def _check_machine(sm: StateMachine) -> list[Finding]:
                     f"to it from the start state '{sm.start}'. Add a transition into it or remove it.")
 
     for st in sm.states:
-        if (not any(t.kind in ("on", "after", "timeout") for t in st.transitions)
-                and st.name not in _TERMINAL):
+        if not any(t.kind in ("on", "after") for t in st.transitions) and st.name not in _TERMINAL:
             warn("FSM_DEAD_END",
                  f"In machine '{sm.name}', state '{st.name}' has no way out: no 'on' or 'after' "
                  "transition leaves it. If that is intended, name it 'done' or 'stopped'.")
-        timers = [t for t in st.transitions if t.kind == "timeout"]
-        if timers:
-            limit = min(t.period_ms or 0 for t in timers)
-            for t in st.transitions:
-                if t.kind == "every" and (t.period_ms or 0) >= limit:
-                    warn("FSM_TIMER_SHADOWED",
-                         f"In machine '{sm.name}', state '{st.name}' would do '{_human(t.action or '')}' "
-                         f"every {_dur(t.period_ms or 0)}, but the state's timer leaves after "
-                         f"{_dur(limit)}, so that action never gets to run. Make the action's period "
-                         "shorter than the timer, or lengthen the timer.")
 
     handled: dict[str, set[str]] = {}
     for st in sm.states:

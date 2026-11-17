@@ -42,14 +42,13 @@ class Pin:
 
 @dataclass(frozen=True)
 class Transition:
-    """One line of a state: ``on``/``after`` change state on events, ``timeout`` changes
-    state after a time in the state, ``every`` runs an action."""
+    """One line of a state: ``on``/``after`` change state, ``every`` runs an action."""
 
-    kind: str  # on | after | every | timeout
+    kind: str  # on | after | every
     event: str | None = None  # snake_case; on/after
-    target: str | None = None  # next state; on/after/timeout
+    target: str | None = None  # next state; on/after
     count: int | None = None  # after: consecutive occurrences needed
-    period_ms: int | None = None  # every period; timeout delay
+    period_ms: int | None = None  # every
     action: str | None = None  # every: snake_case action name
 
 
