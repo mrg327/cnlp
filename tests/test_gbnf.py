@@ -93,3 +93,54 @@ def test_renders_from_test_cnl_accepted(parser):
 def test_missing_terminator_rejected(parser):
     with pytest.raises(LarkError):
         parser.parse("wifi is on.\n")
+
+
+def test_allowed_gpios_restrict_pin_numbers():
+    p = Lark(_to_lark(grammar({4, 25})), parser="earley", lexer="dynamic")
+    ok = 'gpio 25 is output "led" with no pull.\ngpio 4 is high at reset.\n'
+    assert accepts(p, ok)
+    assert not accepts(p, 'gpio 5 is output "led" with no pull.\n')
+    assert not accepts(p, 'gpio 2 is output "led" with no pull.\n')
+    # without a restriction any pin is fine
+    assert accepts(Lark(_to_lark(grammar()), parser="earley", lexer="dynamic"),
+                   'gpio 5 is output "led" with no pull.\n')
+
+
+def test_grammar_without_fsm_drops_machine_lines():
+    p = Lark(_to_lark(grammar(fsm=False)), parser="earley", lexer="dynamic")
+    assert accepts(p, 'gpio 5 is output "led" with no pull.\n')
+    assert not accepts(p, "machine m starts in idle.\n")
+    assert not accepts(p, "state idle.\n")
+
+
+PLAN = [{"name": "sensor", "states": ["idle", "busy"], "start": "idle",
+         "events": ["button_press"], "actions": ["read_sensor"]}]
+
+
+def test_fsm_grammar_only_planned_names():
+    from cnlp.gbnf import fsm_grammar
+    p = Lark(_to_lark(fsm_grammar(PLAN)), parser="earley", lexer="dynamic")
+    good = ("machine sensor starts in idle.\nstate idle: on button press go to busy.\n"
+            "state busy: every 10 s do read sensor; after 3 button press go to idle.\n")
+    assert accepts(p, good)
+    assert cnl.parse("chip is esp32.\nmodule is esp32-wroom-32.\nboard is devkit-v1.\n" + good)
+    for bad in (good.replace("go to busy", "go to error"),             # invented state
+                good.replace("on button press", "on tap"),               # invented event
+                good.replace("read sensor", "poll"),                    # invented action
+                good.replace("machine sensor", "machine other"),        # machine name
+                good.replace("state busy: every 10 s do read sensor; after 3 button press go to idle.\n",
+                             "")):                                       # missing state
+        assert not accepts(p, bad), bad
+
+
+def test_fsm_grammar_numbers_come_from_the_request():
+    from cnlp.gbnf import fsm_grammar
+    p = Lark(_to_lark(fsm_grammar(PLAN, {3, 10})), parser="earley", lexer="dynamic")
+    head = "machine sensor starts in idle.\nstate idle: on button press go to busy.\n"
+    assert accepts(p, head + "state busy: every 10 s do read sensor.\n")
+    assert accepts(p, head + "state busy: after 3 button press go to idle.\n")
+    assert not accepts(p, head + "state busy: every 1 s do read sensor.\n")
+    assert not accepts(p, head + "state busy: after 25 button press go to idle.\n")
+    none = Lark(_to_lark(fsm_grammar(PLAN, set())), parser="earley", lexer="dynamic")
+    assert accepts(none, head + "state busy: on button press go to idle.\n")
+    assert not accepts(none, head + "state busy: every 10 s do read sensor.\n")

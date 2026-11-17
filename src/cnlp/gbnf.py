@@ -27,8 +27,8 @@ feature ::= ("wifi" | "bluetooth" | "jtag" | "deep sleep") " is " onoff ".\n" | 
 onoff ::= "on" | "off"
 port ::= "uart0" | "uart1" | "uart2" | "usb" | "nothing"
 level ::= "high" | "low"
-reset ::= "gpio " num " is " level " at reset.\n"
-pin ::= "gpio " num " is " pmode role? pull? wake? ".\n"
+reset ::= "gpio " gnum " is " level " at reset.\n"
+pin ::= "gpio " gnum " is " pmode role? pull? wake? ".\n"
 pmode ::= plain (" " func)? | bus " " signal
 plain ::= "input" | "output" | "open-drain"
 func ::= "adc" | "dac" | "interrupt" | "pwm"
@@ -46,10 +46,72 @@ words ::= word (" " word){0,5}
 '''
 
 
-def grammar() -> str:
-    """The GBNF text to send as the model's ``grammar`` field."""
+def grammar(allowed_gpios: set[int] | None = None, *, fsm: bool = True) -> str:
+    """The GBNF text to send as the model's ``grammar`` field.
+
+    ``allowed_gpios``: when given (non-empty), a pin statement can only use those
+    GPIO numbers, so the model cannot invent a pin the request never names.
+    ``fsm=False`` drops machine/state lines (a separate staged call writes them).
+    """
     lines = _nest("line", MAX_LINES)
-    return (_RULES.replace("LINES", lines).replace("COMMENT", str(MAX_COMMENT))).strip() + "\n"
+    g = (_RULES.replace("LINES", lines).replace("COMMENT", str(MAX_COMMENT))).strip() + "\n"
+    if allowed_gpios:
+        alts = " | ".join(f'"{n}"' for n in sorted(allowed_gpios))
+        g += f"gnum ::= {alts}\n"
+    else:
+        g += "gnum ::= num\n"
+    if not fsm:
+        g = g.replace("stmt ::= hw | feature | pin | reset | machine | state",
+                      "stmt ::= hw | feature | pin | reset")
+        g = "\n".join(ln for ln in g.splitlines() if not ln.startswith(("machine ::=", "state ::=",
+                                                                          "trans ::=", "unit ::=")))
+        g += "\n"
+    return g
+
+
+def fsm_grammar(machines: list[dict], numbers: set[int] | None = None,
+                 units: set[str] | None = None) -> str:
+    """Grammar for the machine/state lines of already-planned machines.
+
+    Each machine is ``{name, states, start, events, actions}`` with snake_case
+    names. The output is forced to declare each machine, then every one of its
+    states once in the given order; transition targets, events and actions can
+    only be the planned ones. ``numbers`` limits counts and periods to numbers the
+    request states (empty: no ``after``/``every`` transitions at all); ``units`` limits
+    ``every`` to the time units the request uses (ms, s, min).
+    """
+
+    def lit(s: str) -> str:
+        return '"' + s.replace("_", " ") + '"'
+
+    nl_ = '"\\n"'
+    rules = [f'comment ::= "#" [^\\n]{{0,{MAX_COMMENT}}} {nl_}',
+             "unit ::= " + " | ".join(f'"{u}"' for u in ("ms", "s", "min") if not units or u in units)]
+    if numbers is None:
+        rules.append("num ::= [0-9] [0-9]?")
+    elif numbers:
+        rules.append("num ::= " + " | ".join(f'"{n}"' for n in sorted(numbers)))
+    body: list[str] = []
+    for i, m in enumerate(machines):
+        rules.append(f"st{i} ::= " + " | ".join(f'"{s}"' for s in m["states"]))
+        trans = []
+        if m["events"]:
+            rules.append(f"ev{i} ::= " + " | ".join(lit(e) for e in m["events"]))
+            trans.append(f'"on " ev{i} " go to " st{i}')
+            if numbers is None or numbers:
+                trans.append(f'"after " num " " ev{i} " go to " st{i}')
+        if m["actions"] and (numbers is None or numbers):
+            rules.append(f"ac{i} ::= " + " | ".join(lit(a) for a in m["actions"]))
+            trans.append(f'"every " num " " unit " do " ac{i}')
+        if trans:
+            rules.append(f"tr{i} ::= " + " | ".join(trans))
+            tail = f'(": " tr{i} ("; " tr{i}){{0,7}})?'
+        else:
+            tail = ""
+        body.append(f'"machine {m["name"]} starts in {m["start"]}." {nl_}')
+        for s in m["states"]:
+            body.append(f'comment? "state {s}" {tail} "." {nl_}')
+    return "\n".join([f'root ::= {" ".join(body)} "END"', *rules]) + "\n"
 
 
 def _nest(rule: str, n: int) -> str:

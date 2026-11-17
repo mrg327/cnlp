@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from cnlp import cnl, fsm, gbnf, llm, rules
+from cnlp import cnl, fsm, gbnf, llm, nl_fsm, rules
 from cnlp.manifest import Manifest, Pin
 
 DEFAULTS = {"chip": "esp32", "module": "esp32-wroom-32"}
@@ -169,6 +170,11 @@ _PIN_LINE = re.compile(
     r'(?P<wake> wakes from deep sleep on (?:low|high))?\.$')
 _OFFBOARD = re.compile(r"\b(?:breakout|module|sensor|peripheral|daughter|add-?on)\s+board\b"
                        r"|\boff[- ]?board\b|\bon the (?:breakout|sensor|module)\b", re.IGNORECASE)
+_RESISTOR_PULL = re.compile(r"\b(?:pull(?:ed)?[ -]?(?:up|down)s?|pullups?|pulldowns?)\s+resistor|"
+                            r"\bresistor\b[^.;]{0,40}\bpull(?:ed|ing)?[ -]?(?:up|down)|"
+                            r"\b\d+(?:\.\d+)?\s?k\b[^.;]{0,20}\bpull", re.IGNORECASE)
+_INTERNAL_WORD = re.compile(r"\binternal(?:ly)?\b|\bbuilt[- ]?in\b|\bon[- ]chip\b|\bchip'?s\b|"
+                            r"\besp32'?s\b|\bsoftware\b", re.IGNORECASE)
 _PULL_WORD = re.compile(r"\bpull(?:ed)?[ -]?(?:up|down)s?\b|\bpullups?\b|\bpulldowns?\b", re.IGNORECASE)
 _INTERRUPT_WORD = re.compile(r"\binterrupts?\b|\bisr\b|\bedge\b|\btriggers?\b|\bwake", re.IGNORECASE)
 _CLAUSE_SPLIT = re.compile(r"[.;!?\n,]")
@@ -190,6 +196,11 @@ def _normalize(text: str, request: str) -> tuple[str, list[dict]]:
     notes: list[dict] = []
     quote = ""
     wants_sleep = False
+    # A lone input and a resistor the request calls a pull-up, with no word about the chip's own
+    # pull: the model's "internal" is a guess; the resistor is on the board.
+    lone_input = sum(1 for ln in text.splitlines()
+                     if re.match(r"gpio \d+ is input\b", ln.strip())) == 1
+    resistor_pull = bool(_RESISTOR_PULL.search(request)) and not _INTERNAL_WORD.search(request)
     for line in text.splitlines():
         s = line.strip()
         qm = re.match(r'#\s*from:\s*"?(.*?)"?\s*$', s)
@@ -205,6 +216,13 @@ def _normalize(text: str, request: str) -> tuple[str, list[dict]]:
                 notes.append({"field": f"gpio {n} pull", "value": "no pull", "source": "normalized",
                               "question": f"GPIO {n} is an output; dropped the pull the request never mentioned."})
                 pull = " with no pull"
+            elif (pull and "internal" in pull and m["mode"] == "input" and lone_input
+                  and resistor_pull):
+                pull = pull.replace("internal", "external")
+                notes.append({"field": f"gpio {n} pull", "value": pull.strip().removeprefix("with "),
+                              "source": "normalized",
+                              "question": f"The request puts a pull resistor on the board for GPIO {n} "
+                                          "and never asks for the chip's own pull, so it is external."})
             elif pull and re.search(r"external pull-(?:up|down)", pull) and m["mode"] != "output" \
                     and (_OFFBOARD.search(sentences) or (m["mode"].startswith("i2c") and
                                                           _OFFBOARD.search(request))):
@@ -237,15 +255,80 @@ def _normalize(text: str, request: str) -> tuple[str, list[dict]]:
     return res, notes
 
 
-def _pin_numbers_in(request: str) -> set[int]:
-    """GPIO numbers the request names plainly (gpio 4, IO4, pin 4, D4, 'on 25')."""
-    nums = set()
-    for m in re.finditer(r"(?<![a-z0-9])(?:gpios?|io|pins?|d)\s*#?(\d{1,2})(?!\d)"
-                         r"(?:\s*(?:,|and|&|/)\s*#?(\d{1,2})(?!\d))*", request, re.IGNORECASE):
-        nums.update(int(x) for x in re.findall(r"\d+", m.group(0)))
-    for m in re.finditer(r"\bon (\d{1,2})\b(?!\s*(?:k|v|s|ms|hz|min|sec|%|x))", request, re.IGNORECASE):
-        nums.add(int(m.group(1)))
-    return {n for n in nums if n <= 39}
+_KW = r"(?:gpios?|io|pins?|d)"
+_NOT_UNIT = r"(?!\d|\.\d|\s?(?:k|m|v|ohm|ms|s|sec|secs|seconds?|hz|khz|min|mins|minutes?|%|x|ma|times?|mm|cm)\b)"
+_ITEM = rf"(?:{_KW}\s*[-_#]?\s*)?(\d{{1,2}}){_NOT_UNIT}"
+_SEP = r"\s*(?:\([^)]*\)\s*)?(?:,\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+|&|/|\+|\s+&\s+)\s*"
+_RANGE = r"\s*(?:-|\u2013|to|through|thru)\s*"
+_START = re.compile(
+    rf"(?<![a-z0-9])(?:{_KW}\s*[-_#]?\s*|(?:on|to|at|from|via|using|uses?|should be|make that|instead|moved? to|changed? to)\s+(?:{_KW}\s*[-_#]?\s*)?"
+    rf"|(?:sda|scl|tx|rx|mosi|miso|sclk|sck|cs|ss|clk|rst|int)\s*(?:=|:|on|is|->)?\s*(?:{_KW}\s*[-_#]?\s*)?)"
+    rf"(?=\d)", re.IGNORECASE)
+_ITEM_RE = re.compile(_ITEM, re.IGNORECASE)
+_SEP_RE = re.compile(_SEP, re.IGNORECASE)
+_RANGE_RE = re.compile(rf"{_RANGE}(?:{_KW}\s*[-_#]?\s*)?(\d{{1,2}}){_NOT_UNIT}", re.IGNORECASE)
+
+
+def _scan_gpios(request: str) -> list[tuple[int, int]]:
+    """(number, text position) for every pin number the request names."""
+    found: list[tuple[int, int]] = []
+    for st in _START.finditer(request):
+        pos = st.end()
+        while True:
+            im = _ITEM_RE.match(request, pos)
+            if not im:
+                break
+            lo = int(im.group(1))
+            found.append((lo, im.start(1)))
+            pos = im.end()
+            rm = _RANGE_RE.match(request, pos)
+            if rm and lo < int(rm.group(1)) <= lo + 12:
+                found.extend((n, im.start(1)) for n in range(lo + 1, int(rm.group(1)) + 1))
+                pos = rm.end()
+            sm = _SEP_RE.match(request, pos)
+            if not sm:
+                break
+            pos = sm.end()
+    return [(n, p) for n, p in found if n <= 39]
+
+
+# Explicit retractions only: a loose marker ("actually also ...") would drop real pins.
+_RETRACT = re.compile(r"\b(?:wait\b|scratch that|should be|make that|i meant|actually,? no|"
+                      r"no,? put|correction|instead)", re.IGNORECASE)
+_LABEL_STOP = {"on", "gpio", "pin", "pins", "io", "to", "be", "should", "put", "the", "a", "an",
+               "it", "is", "at", "in", "use", "and", "with", "that", "make", "no", "wait",
+               "actually", "instead", "i", "my", "of", "for"}
+
+
+def _labels(text: str, pos: int) -> set[str]:
+    words = re.findall(r"[a-z][a-z0-9]*", text[max(0, pos - 40):pos].lower())
+    return {w for w in words[-4:] if w not in _LABEL_STOP}
+
+
+def gpio_numbers(request: str) -> set[int]:
+    """GPIO numbers the request names: 'GPIO 25', IO25, pin 25, D25, 'on 25', lists and ranges.
+
+    Errs on the side of finding too many (a loose grammar is harmless) rather than too
+    few (a missed pin cannot be written). One exception: after an explicit retraction
+    ("CS 5 ... wait, CS should be 15") a pin number that the correction replaces under
+    the same label is dropped.
+    """
+    scanned = _scan_gpios(request)
+    found = {n for n, _ in scanned}
+    marker = _RETRACT.search(request)
+    if marker:
+        post = {n for n, p in scanned if p >= marker.start()}
+        for n, p in scanned:
+            if p >= marker.start() or n in post:
+                continue
+            lab = _labels(request, p)
+            if lab and any(n2 != n and lab & _labels(request, p2)
+                           for n2, p2 in scanned if p2 >= marker.start()):
+                found.discard(n)
+    return found
+
+
+_pin_numbers_in = gpio_numbers
 
 
 def _missing_pins(text: str, request: str) -> list[int]:
@@ -381,9 +464,34 @@ def _prep(raw: str, request: str) -> tuple[str, list[dict]]:
     return _normalize(_merge_state_lines(_strip_end(raw)), request)
 
 
-def _one_sample(client, messages: list[dict], seed: int, board: str, request: str = ""):
+STAGED_NOTE = ("\n\nThis request also describes behaviour over time. Do NOT write any machine or "
+               "state lines: they are written in a separate step. Write only pins, features, "
+               "sources and questions. Things the request only describes as events (a limit, a timeout, "
+               "a failure) are software events: do not ask which pin they use.")
+
+
+def _fsm_limits(request: str) -> tuple[set[int], set[str]]:
+    """Counts and time units a machine may use: the ones the request states, pin numbers aside."""
+    chars = list(request)
+    for _, pos in _scan_gpios(request):
+        while pos < len(chars) and chars[pos].isdigit():
+            chars[pos] = " "
+            pos += 1
+    return nl_fsm.request_numbers("".join(chars)), nl_fsm.request_units(request)
+
+
+def _stage2(client, plan: list[dict], request: str, seed: int) -> tuple[str, list[dict], str]:
+    """Write the machine/state lines under the plan's grammar. Returns (lines, messages, raw)."""
+    messages = nl_fsm.write_messages(plan, request)
+    raw = nl_fsm.write(client, messages, plan, seed, *_fsm_limits(request))
+    return nl_fsm.sort_transitions(_strip_end(raw)), messages, raw
+
+
+def _one_sample(client, messages: list[dict], seed: int, board: str, request: str = "",
+                allowed: set[int] | None = None, plan: list[dict] | None = None):
     """Return (raw_text, manifest|None, errors, assumptions, full_text)."""
-    raw = client.complete(messages, grammar=gbnf.grammar(), temperature=0.7,
+    grammar = gbnf.grammar(allowed, fsm=plan is None)
+    raw = client.complete(messages, grammar=grammar, temperature=0.7,
                           max_tokens=1500, seed=seed)
     text, norm_notes = _prep(raw, request)
     # A sample that asked questions yet skipped pins the request plainly names gets one nudge.
@@ -393,38 +501,118 @@ def _one_sample(client, messages: list[dict], seed: int, board: str, request: st
                              them="it" if len(missing) == 1 else "them")
         raw2 = client.complete(
             messages + [{"role": "assistant", "content": raw}, {"role": "user", "content": nudge}],
-            grammar=gbnf.grammar(), temperature=0.7, max_tokens=1500, seed=seed + 200)
+            grammar=grammar, temperature=0.7, max_tokens=1500, seed=seed + 200)
         text2, notes2 = _prep(raw2, request)
         if len(_missing_pins(text2, request)) < len(missing):
             raw, text, norm_notes = raw2, text2, notes2
+    fsm_text, fsm_msgs, fsm_raw = _stage2(client, plan, request, seed + 300) if plan else ("", [], "")
+    fsm_tried = False
     for attempt in (0, 1):
-        full, notes = _ensure_defaults(text, board)
+        full, notes = _ensure_defaults(text + fsm_text, board)
         try:
-            return text, cnl.parse(full), [], notes + norm_notes, full
+            m = cnl.parse(full)
         except cnl.CnlError as e:
             errors = e.to_list()
             if attempt:
-                return text, None, errors, notes + norm_notes, full
+                return text + fsm_text, None, errors, notes + norm_notes, full
             msg = ("Your output had these errors:\n"
                    + "\n".join(f"- {x['message']}" for x in errors)
                    + "\nOutput the full corrected spec, ending with END.")
             raw = client.complete(
                 messages + [{"role": "assistant", "content": raw},
                             {"role": "user", "content": msg}],
-                grammar=gbnf.grammar(), temperature=0.7, max_tokens=1500, seed=seed + 100)
+                grammar=grammar, temperature=0.7, max_tokens=1500, seed=seed + 100)
             text, norm_notes = _prep(raw, request)
+            continue
+        found = nl_fsm.problems(m, plan) if plan else []
+        if found and not fsm_tried:  # one targeted retry of the machine lines with the findings
+            fsm_tried = True
+            retry = fsm_msgs + [
+                {"role": "assistant", "content": fsm_raw},
+                {"role": "user", "content": "These problems remain:\n"
+                 + "\n".join(f"- {x}" for x in found)
+                 + "\nWrite all the machine lines again with them fixed, ending with END."}]
+            raw3 = nl_fsm.write(client, retry, plan, seed + 400, *_fsm_limits(request))
+            fsm3 = nl_fsm.sort_transitions(_strip_end(raw3))
+            try:
+                full3, notes3 = _ensure_defaults(text + fsm3, board)
+                m3 = cnl.parse(full3)
+                if len(nl_fsm.problems(m3, plan)) < len(found):
+                    return text + fsm3, m3, [], notes3 + norm_notes, full3
+            except cnl.CnlError:
+                pass
+        return text + fsm_text, m, [], notes + norm_notes, full
     raise AssertionError("unreachable")
 
 
+# ---- role canonicalization -----------------------------------------------------
+
+_ARTICLES = {"the", "a", "an", "my", "our", "main"}
+
+
+def _role_tokens(role: str) -> tuple[str, ...]:
+    return tuple(t for t in re.split(r"[^a-z0-9]+", role.lower()) if t and t not in _ARTICLES)
+
+
+def canonical_role(roles: list[str], request: str) -> str:
+    """One role for a pin out of what each sample called it.
+
+    Normalize (case, articles, punctuation), fold a role that is a subset of a longer
+    one the request actually contains ("door" into "door sensor"), then take the most
+    common; ties prefer a form found in the request, then the first seen.
+    """
+    toks = [_role_tokens(r) for r in roles if _role_tokens(r)]
+    if not toks:
+        return roles[0] if roles else ""
+    req = " ".join(re.findall(r"[a-z0-9]+", request.lower()))
+    in_req = lambda t: " ".join(t) in req
+    counts = Counter(toks)
+    folded: Counter = Counter()
+    for t, c in counts.items():
+        longer = [u for u in counts if set(t) < set(u) and in_req(u)]
+        folded[max(longer, key=len) if longer else t] += c
+    order = list(dict.fromkeys(toks))
+    best = max(folded, key=lambda t: (folded[t], in_req(t), -order.index(t) if t in order else 0))
+    return "_".join(best)
+
+
+def _canonicalize_roles(good: list, request: str) -> list:
+    """Make every sample agree on each pin's role so only real disagreements are voted on."""
+    by_pin: dict[int, list[str]] = {}
+    for _, m, _, _ in good:
+        for p in m.pins:
+            by_pin.setdefault(p.gpio, []).append(p.role)
+    canon = {g: canonical_role(r, request) for g, r in by_pin.items()}
+    out = []
+    for text, m, notes, full in good:
+        if any(p.role != canon[p.gpio] for p in m.pins if canon.get(p.gpio)):
+            def sub(mo):
+                c = canon.get(int(mo.group(1)))
+                return f'{mo.group(0)[:mo.start(3) - mo.start(0)]}{c.replace("_", " ")}"' if c else mo.group(0)
+            new_full = re.sub(r'(?m)^gpio (\d+) is ([^"\n]*?) "([^"\n]*)"', sub, full)
+            try:
+                m = cnl.parse(new_full)
+                full = new_full
+            except cnl.CnlError:
+                pass
+        out.append((text, m, notes, full))
+    return out
+
+
 def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOARD) -> TranslateResult:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+    allowed = gpio_numbers(request) or None
+    plan = None
+    if nl_fsm.looks_stateful(request):
+        plan = nl_fsm.plan(client, request) or None  # None/[] -> single-shot path
+    system = SYSTEM_PROMPT + (STAGED_NOTE if plan else "")
+    messages = [{"role": "system", "content": system},
                 {"role": "user", "content": request}]
     res = TranslateResult(request=request)
     good: list[tuple[str, Manifest, list[dict], str]] = []  # (raw, manifest, notes, full)
     last_errors: list[dict] = []
     for i in range(n):
         text, m, errors, notes, full = _one_sample(client, messages, seed=1000 + i, board=board,
-                                                    request=request)
+                                                    request=request, allowed=allowed, plan=plan)
         res.samples.append(text)
         if m is None:
             res.parse_failures += 1
@@ -438,6 +626,7 @@ def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOAR
             [q for s in res.samples for q in _questions_in(s)]
             + ["I couldn't turn that into a valid spec: " + e["message"] for e in last_errors])
         return res
+    good = _canonicalize_roles(good, request)
 
     groups: list[list[int]] = []
     for i, (_, m, _, _) in enumerate(good):
@@ -457,6 +646,8 @@ def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOAR
     res.assumptions = cnl.assumptions(m, full) + notes
     res.sources = _sources_in(raw)
     rule_q = [f.message for f in rules.check(m) + fsm.check(m) if f.severity == "error"]
+    if plan:  # findings the targeted retry could not clear become questions
+        rule_q += nl_fsm.problems(m, plan)
     res.questions = _dedupe([q for s in res.samples for q in _questions_in(s)]
                             + [d["question"] for d in res.disagreements] + rule_q)
     return res

@@ -219,3 +219,16 @@ pins the request plainly names. Eval: clear 7/15 -> 14/15, total 52/61 ->
 58/61 (runs: 56, 56, 58); state machines 8/10 (baseline 9/10, swing 7-9).
 Remaining: a spurious SPI pin (clear-014); state machines with missing
 transitions or invented states; role-wording disagreements between samples.
+
+## Translator scaffolds (2026-11-17)
+
+Following "where the model falls apart, scaffold or decompose": GPIO numbers
+in the grammar are limited to those the request mentions; state machines are
+planned first (JSON-schema call: names of machines, states, events, actions,
+checked deterministically) and then written under a grammar generated from
+that plan, so invented names are impossible; counts/periods/units are
+limited to values in the request; transitions are sorted and roles
+canonicalized before voting; each retry is paired with a checker.
+Eval (verified independently): 61/61 pass; agreement 26/61 -> 43/61
+(state machines 2/10 -> 5/10). Gap: the language has no time-based
+transition ("after 20 s go to ..."); timeouts are modeled as event counts.
