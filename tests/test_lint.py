@@ -129,5 +129,5 @@ def test_blinky_clean(tmp_path):
     dst = tmp_path / "blinky"
     shutil.copytree(ROOT / "examples/blinky", dst, ignore=shutil.ignore_patterns("build"))
     assert lint.run(dst) == []
-    shutil.rmtree(dst / "components")
+    shutil.rmtree(dst / "components", ignore_errors=True)  # generated; absent in a clean clone
     assert lint.run(dst) == []
