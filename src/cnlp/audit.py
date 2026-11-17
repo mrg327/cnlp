@@ -372,7 +372,7 @@ def audit(config_path: Path) -> dict[str, Any]:
         snapshot = _snapshot(target, sources, snap_root,
                              PARAM_FILES if param_spec is not None else ())
         ex = extract(snap_root, sources)
-        pres = params.check(snap_root, sources, param_spec) if param_spec is not None else None
+        pres = params.check(snap_root, sources, param_spec, plan) if param_spec is not None else None
         lint_findings = _lint(snap_root, profile, notes)
     audit_findings = _diff(plan, ex)
 

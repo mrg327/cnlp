@@ -1,6 +1,6 @@
 # Expected key parameters of the synth, from its CLAUDE.md "Key parameters" table.
 # Checked against a snapshot of the project by `cnlp audit` (see src/cnlp/params.py).
-source: "CLAUDE.md Key parameters"
+source: "synth CLAUDE.md and docs/spec.md"
 
 sdkconfig:
   CONFIG_FREERTOS_HZ: 1000          # scan every 1 ms = one tick
@@ -15,6 +15,19 @@ driver_fields:
   i2s_chan_config_t.dma_desc_num: 2
   i2s_chan_config_t.dma_frame_num: 128
   i2s_std_config_t.clk_cfg.sample_rate_hz: 48000
+  # Phase 8 (I2C OLED). Hex strings compare numerically.
+  i2c_device_config_t.device_address: "0x3C"   # spec.md Hardware table + Pin budget; build-procedure Phase 8 step 2, decision log "Display hardware"
+  i2c_device_config_t.scl_speed_hz: 400000     # spec.md User interface (OLED, 400 kHz); build-procedure Phase 8 step 2; decision log Q20
+  # Not listed: PCNT glitch filter (Phase 7 step 3 says only "around 1,000 ns"), PCNT limits
+  # and edge/level actions (not stated; edge/level are set by calls, not struct fields).
+
+# Driver fields that carry a GPIO must be the plan pin of the named role(s) (needs the pin plan).
+# Pin plan: spec.md Pin budget wiring table; build-procedure Phase 7 step 1, Phase 8 step 1.
+pins:
+  pcnt_chan_config_t.edge_gpio_num: [enc_a, enc_b]    # one channel per encoder pin (Phase 7 step 3: A edge / B level, and the mirror)
+  pcnt_chan_config_t.level_gpio_num: [enc_a, enc_b]
+  i2c_master_bus_config_t.sda_io_num: i2c0_sda
+  i2c_master_bus_config_t.scl_io_num: i2c0_scl
 
 tasks:                              # key = task function or its name string
   audio_task:   {priority: 20, core: 1}

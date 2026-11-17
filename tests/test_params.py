@@ -101,11 +101,11 @@ def test_audit_integration_snapshot_only(tmp_path, monkeypatch):
     seen = []
     real = params.check
 
-    def spy(root, sources, spec):
+    def spy(root, sources, spec, plan=None):
         seen.append(Path(root))
         assert (Path(root) / "sdkconfig").is_file()
         assert (Path(root) / "main" / "audio.c").is_file()
-        return real(root, sources, spec)
+        return real(root, sources, spec, plan)
 
     monkeypatch.setattr(params, "check", spy)
     real_parse = params.parse_sdkconfig
@@ -138,3 +138,108 @@ def test_audit_without_parameters_unchanged(tmp_path):
     r = audit.audit(cfg)
     assert r["param_findings"] == [] and r["params"] is None
     assert r["snapshot"]["files"] == 2  # no sdkconfig copied
+
+
+# ---- hex / enum values, I2C and PCNT driver fields, pin cross-check -------------------
+
+HW = FIX / "proj_hw"
+
+
+def run_hw(spec, plan=None):
+    return params.check(HW, ["main"], {"source": "SRC", **spec}, plan)
+
+
+def test_hex_expected_numeric_and_shown_in_hex():
+    ok = {"driver_fields": {"i2c_device_config_t.device_address": "0x3C"}}
+    assert run_hw(ok).findings == []
+    assert run_hw({"driver_fields": {"i2c_device_config_t.device_address": 0x3C}}).findings == []
+    r = run_hw({"driver_fields": {"i2c_device_config_t.device_address": "0x3d"}})
+    assert rules(r) == [("PARAM_DRIVER_FIELD", "error")]
+    assert "device_address is 0x3c, expected 0x3d (SRC)" in r.findings[0].message
+    assert r.findings[0].message.startswith("main/hw.c:")
+
+
+def test_hex_constant():
+    r = run_hw({"constants": {"OLED_ADDR": "0x3C"}})
+    assert r.findings == []
+    r = run_hw({"constants": {"OLED_ADDR": "0x3D"}})
+    assert "OLED_ADDR is 0x3c, expected 0x3d" in r.findings[0].message
+
+
+def test_i2c_device_and_bus_fields():
+    r = run_hw({"driver_fields": {
+        "i2c_device_config_t.device_address": "0x3C",
+        "i2c_device_config_t.scl_speed_hz": 400000,        # assignment after declaration
+        "i2c_master_bus_config_t.sda_io_num": 21,          # GPIO_NUM_21 evaluated
+        "i2c_master_bus_config_t.scl_io_num": 22}})
+    assert r.findings == []
+    r = run_hw({"driver_fields": {"i2c_device_config_t.scl_speed_hz": 100000}})
+    assert rules(r) == [("PARAM_DRIVER_FIELD", "error")]
+    assert "is 400000, expected 100000" in r.findings[0].message
+
+
+def test_enum_fields_compare_by_name():
+    key = "i2c_device_config_t.dev_addr_length"
+    assert run_hw({"driver_fields": {key: "I2C_ADDR_BIT_LEN_7"}}).findings == []  # via #define
+    r = run_hw({"driver_fields": {key: "I2C_ADDR_BIT_LEN_10"}})
+    assert rules(r) == [("PARAM_DRIVER_FIELD", "error")]
+    assert "is I2C_ADDR_BIT_LEN_7, expected I2C_ADDR_BIT_LEN_10" in r.findings[0].message
+
+
+def test_pcnt_unit_and_filter_fields():
+    r = run_hw({"driver_fields": {
+        "pcnt_unit_config_t.high_limit": 100, "pcnt_unit_config_t.low_limit": -100,
+        "pcnt_glitch_filter_config_t.max_glitch_ns": 1000}})
+    assert r.findings == []
+    r = run_hw({"driver_fields": {"pcnt_unit_config_t.low_limit": -50,
+                                  "pcnt_glitch_filter_config_t.max_glitch_ns": 500}})
+    assert rules(r) == [("PARAM_DRIVER_FIELD", "error")] * 2
+    assert "low_limit is -100, expected -50" in r.findings[0].message
+
+
+def test_pcnt_channel_gpio_fields_two_sites():
+    r = run_hw({"driver_fields": {"pcnt_chan_config_t.edge_gpio_num": 32}})
+    # chan_a ok; chan_b (13) and stray (5) differ
+    assert [f.rule for f in r.findings] == ["PARAM_DRIVER_FIELD"] * 2
+
+
+def _plan():
+    from cnlp import audit
+    plan, _ = audit._plan_findings(Path(__file__).parent.parent / "projects" / "synth" / "spec.cnl")
+    return plan
+
+
+def test_pin_cross_check_roles():
+    plan = _plan()
+    spec = {"pins": {"i2c_master_bus_config_t.sda_io_num": "i2c0_sda",   # by role
+                     "i2c_master_bus_config_t.scl_io_num": ["i2c0_scl"]}}
+    assert run_hw(spec, plan).findings == []
+    spec = {"pins": {"pcnt_chan_config_t.edge_gpio_num": ["enc_a", "enc_b"]}}
+    r = run_hw(spec, plan)
+    assert rules(r) == [("PARAM_PIN", "error")]          # only `stray` (GPIO 5, no plan pin)
+    assert "GPIO 5 (no pin in the plan), must be plan pin enc_a or enc_b" in r.findings[0].message
+
+
+def test_pin_cross_check_wrong_role_and_unresolved():
+    plan = _plan()
+    r = run_hw({"pins": {"i2c_master_bus_config_t.sda_io_num": "i2c0_scl"}}, plan)
+    assert rules(r) == [("PARAM_PIN", "error")]
+    assert "GPIO 21 (plan role i2c0_sda), must be plan pin i2c0_scl" in r.findings[0].message
+    r = run_hw({"pins": {"pcnt_chan_config_t.level_gpio_num": ["enc_a", "enc_b"]}}, plan)
+    assert rules(r) == [("PARAM_UNRESOLVED", "warning")]  # unknown_pin(); never guessed
+
+
+def test_pin_cross_check_unknown_role_and_no_plan():
+    r = run_hw({"pins": {"pcnt_chan_config_t.edge_gpio_num": "enc_z"}}, _plan())
+    assert rules(r) == [("PARAM_PIN", "error")] and "no role enc_z" in r.findings[0].message
+    r = run_hw({"pins": {"pcnt_chan_config_t.edge_gpio_num": "enc_a"}})
+    assert rules(r) == [("PARAM_PIN", "warning")] and "No pin plan" in r.findings[0].message
+
+
+def test_not_yet_for_hardware_fields():
+    r = params.check(PROJ, ["main"], {"source": "SRC", "driver_fields": {  # proj: no I2C/PCNT
+        "i2c_device_config_t.device_address": "0x3C",
+        "pcnt_unit_config_t.high_limit": 100,
+        "i2c_device_config_t.dev_addr_length": "I2C_ADDR_BIT_LEN_7"},
+        "pins": {"pcnt_chan_config_t.edge_gpio_num": "enc_a"}}, _plan())
+    assert rules(r) == [("PARAM_MISSING", "warning")] * 4
