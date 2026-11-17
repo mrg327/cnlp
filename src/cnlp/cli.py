@@ -94,6 +94,10 @@ def cmd_verify_plan(a: argparse.Namespace) -> int:
         return 2
     if getattr(a, "json", False):
         _emit(res)
+    elif getattr(a, "for_model", False):
+        from cnlp import brief
+
+        sys.stdout.write(brief.BRIEFS["verify_plan"](res) + "\n")
     elif a.markdown and not a.out:
         sys.stdout.write(verify.to_markdown(res))
     else:

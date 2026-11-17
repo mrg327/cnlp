@@ -378,5 +378,29 @@ def brief_ask(obj: dict) -> str:
     return "\n".join(["ANSWER (relay this; keep rule IDs and command names exactly):", *body])
 
 
+def brief_verify_plan(obj: dict) -> str:
+    reqs = obj.get("requirements") or []
+    sym = {"pass": OK, "accepted": OK, "fail": ERR, "stale": WARN}
+    report = [f"- {sym.get(r.get('status'), NOTE)} {r['req']} {r.get('status')} — "
+              f"{_flat(r.get('text', ''))[:100]}" for r in reqs]
+    if not report:
+        report = [f"- {NOTE} No requirements in the plan."]
+    facts = []
+    one = len(reqs) == 1
+    for r in reqs:
+        for st in r.get("steps") or []:
+            if st.get("kind") == "command":
+                facts.append(f"- {r['req']} ({_flat(st.get('text', ''))}), the user runs: {st.get('command')}")
+                if not one:
+                    break
+            elif one:
+                facts.append(f"- {r['req']}: {_flat(st.get('text', ''))[:200]}")
+    if obj.get("no_spec_test"):
+        facts.append("- No spec test for: " + ", ".join(obj["no_spec_test"]) + " (verify by hand).")
+    nxt = ["The user runs the measure/evidence commands; never run them yourself.",
+           "Show the command for the requirement they ask about, verbatim."]
+    return _assemble(report, facts, nxt, more="run cnlp verify-plan for all")
+
+
 BRIEFS = {"audit": brief_audit, "status": brief_status, "evidence": brief_evidence,
-          "try": brief_try}
+          "try": brief_try, "verify_plan": brief_verify_plan}

@@ -4,12 +4,30 @@
 // - Registers cnlp_status, cnlp_audit, cnlp_evidence and cnlp_ask (all read-only).
 // - When the session's directory is covered by a cnlp config, tells the model to use them
 //   before answering questions about progress, pins, rules or whether the code is OK.
-// - Blocks bash commands that would record approvals or measurements in the user's name.
+// - Blocks bash commands that would record approvals/measurements/flashes in the user's name, and
+//   bash or write/edit calls that touch cnlp's records, rules or source (see guard.ts).
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { checkBash, checkWrite } from "./guard.ts";
 
 const CNLP = "cnlp";
-const RECORDING = /\bcnlp\b[^\n]*\b(flash|gate\s+(answer|review)|evidence\s+add|measure\b[^\n]*--record|sync\b[^\n]*--apply)\b/;
+
+// The extension is a symlink into the cnlp repo; its real path locates the repo.
+function locateRoot(): string {
+  const tries = [
+    () => new URL(import.meta.url).pathname,
+    () => join(homedir(), ".pi", "agent", "extensions", "cnlp", "index.ts"),
+  ];
+  for (const t of tries) {
+    try { return join(realpathSync(t()), "..", "..", "..", ".."); } catch { /* next */ }
+  }
+  return process.env.CNLP_ROOT ?? "";
+}
+const CNLP_ROOT = locateRoot();
+const PROJECTS_DIR = process.env.CNLP_PROJECTS_DIR || join(CNLP_ROOT, "projects");
 
 type Run = { code: number; text: string };
 
@@ -65,6 +83,24 @@ export default function (pi: ExtensionAPI) {
     Type.Object({ statement: Type.String({ description: "Controlled-English pin line(s), each ending with a period" }) }),
     "Check a proposed GPIO/pin change against all pin rules before editing code");
 
+  tool("cnlp_verify_plan", "cnlp verify-plan",
+    "Concrete verification steps for the project's requirements: per requirement the status, the test from the " +
+    "spec's verification plan and the exact commands the USER runs to measure and record evidence. Optionally " +
+    "limit to one requirement (e.g. R4). Read-only; never run the commands it lists.",
+    (p) => ["--for-model", "verify-plan", ".", ...(p.req ? [String(p.req)] : [])],
+    Type.Object({ req: Type.Optional(Type.String({ description: "Requirement ID such as R4; omit for all" })) }),
+    "Show how to verify a requirement (commands for the user to run)");
+
+  tool("cnlp_rules", "cnlp rules",
+    "List every rule cnlp checks (IDs, family, whether the user has reviewed it). Optionally filter by family " +
+    "or only rules still needing the user's review. Read-only.",
+    (p) => ["--for-model", "rules", ...(p.family ? ["--family", String(p.family)] : []),
+            ...(p.needs_review ? ["--needs-review"] : [])],
+    Type.Object({
+      family: Type.Optional(Type.String({ description: "Rule family filter" })),
+      needs_review: Type.Optional(Type.Boolean({ description: "Only rules the user has not reviewed" })),
+    }));
+
   tool("cnlp_ask", "cnlp ask",
     "Ask cnlp a question about itself, a rule ID, a pin, or which cnlp command to use. Answers come only from " +
     "cnlp's own sources with citations; '?' means it doesn't know.",
@@ -93,11 +129,21 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  pi.on("tool_call", async (event) => {
-    if (event.toolName !== "bash") return;
-    const cmd = String((event.input as any)?.command ?? "");
-    if (RECORDING.test(cmd)) {
-      return { block: true, reason: "That cnlp command records an approval, a measurement or a flash in the user's name. Show it to the user to run themselves." };
+  pi.on("tool_call", async (event, ctx) => {
+    const input = (event.input ?? {}) as Record<string, unknown>;
+    const opts = { cnlpRoot: CNLP_ROOT, projectsDir: PROJECTS_DIR, cwd: ctx.cwd };
+    let reason: string | null = null;
+    if (event.toolName === "bash") {
+      reason = checkBash(String(input.command ?? ""), opts);
+    } else if (/write|edit|patch|replace|create|delete|move|rename/i.test(event.toolName)) {
+      // Pi's built-in write and edit tools take { path } (edit adds edits[]); also cover other names.
+      for (const k of ["path", "file_path", "filePath", "file"]) {
+        if (typeof input[k] === "string") {
+          reason = checkWrite(input[k] as string, CNLP_ROOT, PROJECTS_DIR, ctx.cwd);
+          if (reason) break;
+        }
+      }
     }
+    if (reason) return { block: true, reason };
   });
 }

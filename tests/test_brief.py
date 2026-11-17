@@ -226,3 +226,16 @@ def test_for_model_status_attaches_audit_findings(monkeypatch, fake_audit, capsy
     assert "- ✗ PARAM_TASK main/audio.c:121" in out and "- ! C6" in out
     _, js = run(capsys, "--json", "--for-model", "status", ".")
     assert "_audit_findings" not in json.loads(js)
+
+
+def test_verify_plan_brief():
+    plan = {"requirements": [
+        {"req": "R4", "text": "Scan loop runs at 1 ms", "status": "missing", "steps": [
+            {"kind": "note", "text": "probe GPIO 2"},
+            {"kind": "command", "text": "measure and record", "command": "cnlp measure . R4 --record"}]},
+        {"req": "R5", "text": "Keys debounce", "status": "pass", "steps": []}],
+        "notes": [], "no_spec_test": []}
+    out = brief.BRIEFS["verify_plan"](plan)
+    assert out.startswith("REPORT") and "- ○ R4 missing" in out and "- ✓ R5 pass" in out
+    assert "the user runs: cnlp measure . R4 --record" in out
+    assert "never run them yourself" in out
