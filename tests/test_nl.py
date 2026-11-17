@@ -129,3 +129,11 @@ def test_live_translate():
     print(f"\n{time.time() - t:.1f}s agreed={r.agreed}\n{r.spec_text}\n{r.questions}")
     assert r.ok
     cnl.parse(r.canonical)
+
+
+def test_merge_state_lines_joins_split_states():
+    text = ("machine s starts in idle.\nstate idle: on start go to busy.\n"
+            "state busy: every 10 s do read.\nstate busy: after 3 failed go to idle.\n")
+    merged = nl._merge_state_lines(text)
+    assert "state busy: every 10 s do read; after 3 failed go to idle." in merged
+    assert merged.count("state busy") == 1

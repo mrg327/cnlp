@@ -1,0 +1,16 @@
+chip is esp32.
+module is esp32-wroom-32.
+board is devkit-v1.
+wifi is off.
+bluetooth is off.
+console is on uart0.
+gpio 16 is output "row 1" with no pull.
+gpio 17 is output "row 2" with no pull.
+gpio 34 is input "col 1" with external pull-up.
+gpio 32 is input "enc a" with internal pull-up.
+gpio 27 is input "enc sw" with internal pull-up.
+gpio 26 is output "i2s bclk" with no pull.
+gpio 25 is output "i2s lrc" with no pull.
+gpio 33 is output "i2s din" with no pull.
+gpio 2 is output "probe scan" with no pull.
+gpio 4 is output "spare" with no pull.

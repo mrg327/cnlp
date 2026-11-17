@@ -113,6 +113,19 @@ def cmd_check_fsm(a: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def cmd_audit(a: argparse.Namespace) -> int:
+    from cnlp import audit
+
+    cfg = Path(a.config)
+    if cfg.is_dir():
+        cfg = cfg / "audit.yaml"
+    result = audit.audit(cfg)
+    if a.save:
+        audit.write_report(result, cfg)
+    _emit(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_lint(a: argparse.Namespace) -> int:
     from cnlp import lint
 
@@ -197,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("lint", help="lint app code for pin, include and pure-core rules"
                    ).set_defaults(fn=cmd_lint)
+
+    s = sub.add_parser("audit", help="read-only audit of an existing project (works on a snapshot)")
+    s.add_argument("config", help="projects/<name> or its audit.yaml")
+    s.add_argument("--save", action="store_true", help="also write <name>/.cnlp/audit.json")
+    s.set_defaults(fn=cmd_audit)
 
     s = sub.add_parser("sync", help="detect hand edits to generated files")
     s.add_argument("--apply", action="store_true", help="write the proposed spec.cnl")

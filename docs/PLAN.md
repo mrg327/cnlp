@@ -59,8 +59,32 @@ changes), and state machines (`machine`/`state` grammar, `cnlp check-fsm`,
 table-driven pure-C codegen with a host test under ASan/UBSan;
 `examples/fsm_demo` builds). 113 tests pass.
 
-Not done yet: Qwen translation (next), the interface gate, tests-before-code,
-Pi, sandbox. The broker runs in-process, not outside a sandbox.
+Qwen translation: `cnlp spec "<request>"` (grammar-constrained, 3 samples,
+retry on parse errors, `# from:` traceability). Evaluated on a 61-request
+corpus (`scripts/eval_translate.py`): 47/61 on the first run; split state
+lines are now merged before parsing, which took state machines from 4/10 to
+9/10. Clear requests are the weak spot (7/15): invented pulls, external vs
+off-board, and sometimes questions instead of statements.
+
+Not done yet: the interface gate, tests-before-code, Pi, sandbox. The broker
+runs in-process, not outside a sandbox.
+
+## Direction (2026-11-17): help the synth project, check-first
+
+cnlp's main job is to help `engr844_final_project` without disrupting it:
+read-only checks on the user's own code, never generated code or writes there.
+
+- `cnlp audit projects/synth`: snapshots the target's sources into a temp dir,
+  extracts the pin setup from the C (tree-sitter), diffs it against
+  `projects/synth/spec.cnl`, runs pin rules and the project's lint profile.
+- Real-time lint (`rtlint.py`, profile `projects/synth/cnlp-profile.yaml`):
+  the synth's six real-time rules from its CLAUDE.md (RT1-RT6).
+- First results (on a copy, 2026-11-17): no real-time rule findings; plan and
+  code agree on the 15 pins configured so far; 5 planned pins not configured
+  yet (encoder, OLED; later phases); GPIO 2 strapping warnings (C6, W4).
+
+Next for the synth: evidence matrix from its verification plan and scope
+measurements.
 
 ## Qwen spike results (2026-11-17)
 

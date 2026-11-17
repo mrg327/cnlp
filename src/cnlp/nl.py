@@ -101,6 +101,31 @@ class TranslateResult:
         return d
 
 
+_STATE_LINE = re.compile(r"^state ([a-z][a-z0-9_]*):\s*(.*?)\.\s*$")
+
+
+def _merge_state_lines(text: str) -> str:
+    """Join repeated `state X: ...` lines of one machine into the first one.
+
+    The model often splits a state across lines; the language itself stays strict
+    (FSM_DUPLICATE) for people. Deterministic: transitions keep their order.
+    """
+    out: list[str] = []
+    seen: dict[str, int] = {}  # state name -> index in out, reset per machine
+    for line in text.splitlines():
+        if line.startswith("machine "):
+            seen = {}
+        m = _STATE_LINE.match(line.strip())
+        if m and m.group(1) in seen:
+            i = seen[m.group(1)]
+            out[i] = out[i].rstrip()[:-1] + "; " + m.group(2) + "."
+            continue
+        if m:
+            seen[m.group(1)] = len(out)
+        out.append(line)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
 def _strip_end(text: str) -> str:
     t = text.rstrip()
     t = re.sub(r"\n?\s*END\s*$", "", t) if t.endswith("END") else t
@@ -222,7 +247,7 @@ def _one_sample(client, messages: list[dict], seed: int, board: str):
     """Return (raw_text, manifest|None, errors, assumptions_from_defaults)."""
     raw = client.complete(messages, grammar=gbnf.grammar(), temperature=0.7,
                           max_tokens=1500, seed=seed)
-    text = _strip_end(raw)
+    text = _merge_state_lines(_strip_end(raw))
     for attempt in (0, 1):
         full, notes = _ensure_defaults(text, board)
         try:
@@ -238,7 +263,7 @@ def _one_sample(client, messages: list[dict], seed: int, board: str):
                 messages + [{"role": "assistant", "content": raw},
                             {"role": "user", "content": msg}],
                 grammar=gbnf.grammar(), temperature=0.7, max_tokens=1500, seed=seed + 100)
-            text = _strip_end(raw)
+            text = _merge_state_lines(_strip_end(raw))
     raise AssertionError("unreachable")
 
 

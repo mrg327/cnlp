@@ -1,0 +1,42 @@
+# cnlp advisory profile for the ENGR 844 polyphonic synth (hand-written, FreeRTOS).
+# Lives outside the synth tree on purpose: use it with
+#   lint.run(Path("<synth>"), profile_path=Path("projects/synth/cnlp-profile.yaml"))
+# Encodes the synth's CLAUDE.md "Real-time rules" 1-6.
+
+sources: [main]
+
+# The synth writes its own gpio_config by design; the generator rules do not apply.
+disable: [LINT_DIRECT_GPIO, LINT_DRIVER_PIN_FIELD]
+
+# Normal includes (driver/i2s_std.h, driver/gpio.h, esp_rom_sys.h, math.h, esp_log.h ...)
+# are already on the default allowlist; extras the project may add as it grows:
+include_allow:
+  - driver/i2c_master.h
+  - driver/pulse_cnt.h
+  - nvs_flash.h
+  - esp_timer.h
+
+realtime:
+  # Rules 1 and 4: audio prio 20 / core 1; scan 10, UI 5, display 2 on core 0.
+  tasks:
+    audio: {entry: audio_task, realtime: true}
+    blink: {entry: blink_task}
+    # scan: {entry: scan_task}      # uncomment as the tasks appear (auto-discovery
+    # ui: {entry: ui_task}          # from xTaskCreate* also finds them)
+    # display: {entry: display_task}
+
+  # Rule 1: the audio task may block only on I2S.
+  allowed_blocking_in_realtime: [i2s_channel_write]
+
+  # Rule 6: GPIO, tables, queue, settings defaults, I2C/display, PCNT, I2S, then tasks
+  # with the audio task created last. Stages not in the code yet are skipped.
+  startup_function: app_main
+  startup_order:
+    - {stage: gpio, calls: ["gpio_config", "setup_*", "scan_init", "*_gpio_init", "board_pins_init"]}
+    - {stage: tables, calls: ["synth_init", "*_tables_init"]}
+    - {stage: queue, calls: ["xQueueCreate*"]}
+    - {stage: settings, calls: ["settings_init", "settings_defaults*", "settings_load*"]}
+    - {stage: i2c_display, calls: ["i2c_new_master_bus", "display_init", "i2c_*_init"]}
+    - {stage: pcnt, calls: ["pcnt_new_unit", "encoder_init", "pcnt_*_init"]}
+    - {stage: i2s, calls: ["i2s_new_channel", "audio_init"]}
+    - {stage: tasks, calls: ["xTaskCreate*", "audio_start_task"]}

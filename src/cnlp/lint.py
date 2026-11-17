@@ -14,6 +14,12 @@ Profile: optional `<project>/cnlp-profile.yaml`, merged over
 
     include_allow: [globs]          # fnmatch globs on the header name; appended
     include_ban: {header: replacement text}   # added/overrides; message names it
+    disable: [rule ids]             # rules to turn off, e.g. LINT_DIRECT_GPIO
+    sources: [main]                 # scan these dirs instead of main/components/core
+    realtime: {...}                 # enables the advisory RT* rules, see cnlp.rtlint
+
+`run(project, profile_path=...)` reads the profile from that file instead of
+`<project>/cnlp-profile.yaml`, so a profile can live outside a read-only project.
 
 A header in include_ban is LINT_BANNED_API; otherwise it must match
 include_allow or (for "quoted" includes) exist in the project.
@@ -27,6 +33,7 @@ gpio_* functions are not flagged.
 from __future__ import annotations
 
 import fnmatch
+import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -76,31 +83,40 @@ _PARSER = Parser(Language(tree_sitter_c.language()))
 class Profile:
     allow: tuple[str, ...]
     ban: dict[str, str]
+    disable: frozenset[str] = frozenset()
+    sources: tuple[str, ...] = SCAN_ROOTS
+    realtime: dict | None = None
 
 
-def load_profile(project: Path) -> Profile:
+def load_profile(project: Path, profile_path: Path | None = None) -> Profile:
     text = resources.files("cnlp").joinpath("lint_profile_default.yaml").read_text("utf-8")
     base = yaml.safe_load(text) or {}
     allow = list(base.get("include_allow", []))
     ban = dict(base.get("include_ban", {}))
-    path = project / "cnlp-profile.yaml"
+    path = Path(profile_path) if profile_path else project / "cnlp-profile.yaml"
+    disable: set[str] = set()
+    sources: tuple[str, ...] = SCAN_ROOTS
+    realtime = None
     if path.is_file():
         over = yaml.safe_load(path.read_text("utf-8")) or {}
         allow += list(over.get("include_allow") or [])
         ban.update(over.get("include_ban") or {})
+        disable = set(over.get("disable") or [])
+        sources = tuple(over.get("sources") or SCAN_ROOTS)
+        realtime = over.get("realtime")
     # An explicit allow for a default-banned header lifts the ban only if the user
     # removes it by mapping it to an empty value.
     ban = {k: v for k, v in ban.items() if v}
-    return Profile(tuple(allow), ban)
+    return Profile(tuple(allow), ban, frozenset(disable), sources, realtime)
 
 
 def _is_generated(text: bytes) -> bool:
     return any(MARKER.encode() in ln for ln in text.splitlines()[:5])
 
 
-def _source_files(project: Path) -> list[Path]:
+def _source_files(project: Path, roots: tuple[str, ...] = SCAN_ROOTS) -> list[Path]:
     out: list[Path] = []
-    for root in SCAN_ROOTS:
+    for root in roots:
         base = project / root
         if not base.is_dir():
             continue
@@ -219,14 +235,22 @@ def _field_msg(name: str) -> str:
     )
 
 
-def run(project: Path) -> list[Finding]:
+def run(project: Path, profile_path: Path | None = None) -> list[Finding]:
     """Lint a project directory; findings sorted by file then line."""
     project = Path(project)
-    prof = load_profile(project)
+    prof = load_profile(project, profile_path)
+    files = _source_files(project, prof.sources)
     keyed: list[tuple[str, int, Finding]] = []
-    for f in _source_files(project):
+    for f in files:
         rel = f.relative_to(project).as_posix()
         for line, fnd in _lint_file(project, f, prof):
             keyed.append((rel, line, fnd))
+    if prof.realtime is not None:
+        from cnlp import rtlint
+
+        for fnd in rtlint.check(project, files, prof.realtime):
+            m = re.match(r"(.*?):(\d+): ", fnd.message)
+            keyed.append((m.group(1), int(m.group(2)), fnd) if m else ("", 0, fnd))
+    keyed = [t for t in keyed if t[2].rule not in prof.disable]
     keyed.sort(key=lambda t: (t[0], t[1]))
     return [t[2] for t in keyed]

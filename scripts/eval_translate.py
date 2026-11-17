@@ -45,7 +45,7 @@ def score(entry: dict, r) -> tuple[bool, str]:
     if cat == "state_machine":
         want = cnl.parse(entry["expected_spec"])
         errs = [f.rule for f in fsm.check(r.manifest) if f.severity == "error"]
-        shape = lambda m: sorted(len(sm.states) for sm in m.state_machines)  # noqa: E731
+        shape = lambda m: sorted(len(sm.states) for sm in m.state_machines)
         ok = not errs and shape(r.manifest) == shape(want)
         return ok, "" if ok else f"fsm errors {errs}, states {shape(r.manifest)} want {shape(want)}"
     if cat == "rule_violation":
@@ -60,8 +60,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", nargs="?", default="eval_translate.json")
     ap.add_argument("-n", type=int, default=3)
+    ap.add_argument("--category", help="only run entries of this category")
     a = ap.parse_args()
     entries = yaml.safe_load(CORPUS.read_text())
+    if a.category:
+        entries = [e for e in entries if e["category"] == a.category]
     rows, by_cat = [], defaultdict(lambda: [0, 0, 0, 0])  # pass, total, parsed, agreed
     t0 = time.time()
     for e in entries:

@@ -1,0 +1,5 @@
+# Read-only audit of the class project against spec.cnl. Nothing is written to target.
+target: ~/projects/engr844_final_project
+sources: [main]
+spec: spec.cnl
+lint_profile: cnlp-profile.yaml
