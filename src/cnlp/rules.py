@@ -63,8 +63,8 @@ def _chip_layer(m: Manifest) -> list[Finding]:
             out.append(L.finding("C3", p))
         if g in s["strapping_warn"]:
             out.append(L.finding(s["strapping_warn"][g], p))
-        if g in s["adc2"] and p.function == "adc" and f.wifi:
-            out.append(L.finding("C10", p))
+        if g in s["adc2"] and f.wifi:
+            out.append(L.finding("C10" if p.function == "adc" else "C10_GPIO", p))
         if p.function == "interrupt" and g in s["adc_interrupt_errata"]:
             if any_adc:
                 out.append(L.finding("C11", p, reason="while any ADC is in use"))
@@ -80,6 +80,8 @@ def _chip_layer(m: Manifest) -> list[Finding]:
             out.append(L.finding("C15", p))
         if (p.mode == "open_drain" or p.function == "i2c") and p.pull == "none":
             out.append(L.finding("OPEN_DRAIN_PULL", p))
+        if p.function == "i2c" and p.pull == "internal_up":
+            out.append(L.finding("I2C_WEAK_PULL", p))
         if p.mode == "input" and p.function in ("gpio", "interrupt") and p.pull == "none":
             out.append(L.finding("FLOATING", p))
     return out
@@ -97,15 +99,12 @@ def _module_layer(m: Manifest) -> list[Finding]:
         if g in s["mtdi"]:
             if p.pull == "external_up":
                 out.append(L.finding("W3_EXTERNAL_PULLUP", p))
-            elif p.mode == "input" and p.reset_level != "low":
-                out.append(L.finding("W3_INPUT", p))
-        if g in s["strapping"]:
-            detail = (
-                "Declared reset level: " + p.reset_level + "."
-                if p.reset_level
-                else "Declare reset_level (low or high) for this pin."
-            )
-            out.append(L.finding("W4", p, detail=detail))
+            elif p.reset_level != "low":  # inputs and outputs alike
+                out.append(L.finding("W3_RESET", p))
+        if g in s["strapping"] and p.reset_level is None:
+            out.append(L.finding("W4", p))
+        if g in s["not_exposed"]:
+            out.append(L.finding("W5", p))
     return out
 
 

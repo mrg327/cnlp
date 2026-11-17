@@ -72,11 +72,37 @@ def test_strapping_button_is_warning():
     assert all(f.severity == "warning" for f in found)
 
 
-def test_w4_mentions_missing_reset_level():
+def test_w4_only_when_reset_level_undeclared():
     m = mk([{"gpio": 0, "mode": "input", "pull": "internal_up"}])
-    assert any("reset_level" in f.message for f in rules.check(m) if f.rule == "W4")
+    assert any("at reset" in f.message for f in rules.check(m) if f.rule == "W4")
     m = mk([{"gpio": 0, "mode": "input", "pull": "internal_up", "reset_level": "high"}])
-    assert any("high" in f.message for f in rules.check(m) if f.rule == "W4")
+    assert not any(f.rule == "W4" for f in rules.check(m))
+
+
+def test_gpio12_output_warns_unless_low_at_reset():
+    assert ("W3", "warning") in sev(mk([{"gpio": 12, "mode": "output", "pull": "none"}]))
+    m = mk([{"gpio": 12, "mode": "output", "pull": "none", "reset_level": "low"}])
+    assert not any(f.rule == "W3" for f in rules.check(m))
+
+
+def test_adc2_plain_gpio_with_wifi_is_warning():
+    m = mk([{"gpio": 4, "mode": "output", "pull": "none"}], wifi=True)
+    assert ("C10", "warning") in sev(m)
+    m = mk([{"gpio": 4, "mode": "output", "pull": "none"}])
+    assert not any(f.rule == "C10" for f in rules.check(m))
+
+
+def test_i2c_internal_pullup_is_weak_warning():
+    m = mk([
+        {"gpio": 21, "role": "i2c0_sda", "mode": "open_drain", "pull": "internal_up",
+         "function": "i2c", "bus": "i2c0_sda"},
+    ])
+    assert ("I2C_WEAK_PULL", "warning") in sev(m)
+
+
+@pytest.mark.parametrize("gpio", [37, 38])
+def test_gpio37_38_not_on_wroom(gpio):
+    assert ("W5", "error") in sev(mk([{"gpio": gpio, "mode": "input", "pull": "external_up"}]))
 
 
 def test_gpio12_input_warning_and_low_ok():

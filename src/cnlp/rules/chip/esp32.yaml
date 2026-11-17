@@ -47,6 +47,10 @@ rules:
   C10:
     severity: error
     message: "GPIO {gpio} ({role}): this pin is on ADC2, which cannot be used while Wi-Fi is on. Use an ADC1 pin (GPIO 32-39) instead, or turn Wi-Fi off."
+  C10_GPIO:
+    id: C10
+    severity: warning
+    message: "GPIO {gpio} ({role}): this pin is on ADC2 and Wi-Fi is on. Plain digital use is fine, but ADC2 readings won't work on it while Wi-Fi runs. Prefer a non-ADC2 pin if it might ever be an analog input."
   C11:
     severity: error
     message: "GPIO {gpio} ({role}): interrupts on GPIO 36 and 39 are unreliable {reason} (ESP32 errata GPIO-3.11). Use a different pin for the interrupt, such as GPIO 4."
@@ -68,6 +72,9 @@ rules:
   OPEN_DRAIN_PULL:
     severity: error
     message: "GPIO {gpio} ({role}): open-drain/I2C line with no pull-up anywhere, so it can never go high. Declare an external pull-up (or external_offboard if it is on the breakout)."
+  I2C_WEAK_PULL:
+    severity: warning
+    message: "GPIO {gpio} ({role}): I2C line relying on the internal pull-up only (about 45 kOhm), which is usually too weak for reliable I2C. Add an external 2.2-10 kOhm pull-up unless the bus is short and slow."
   FLOATING:
     severity: error
     message: "GPIO {gpio} ({role}): input with no pull and no driver will float. Enable an internal pull (if the pin supports one) or declare an external pull-up or pull-down."

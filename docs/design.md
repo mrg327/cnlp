@@ -181,7 +181,7 @@ These tables are the first real rule files, drafted from Espressif's [ESP-IDF GP
 | C7 | 5 | Strapping, default pull-up; sets SDIO slave timing | Warning |
 | C8 | 12 (MTDI) | Strapping, default pull-down; high at reset selects a 1.8 V flash supply | Decided by the module layer |
 | C9 | 15 (MTDO) | Strapping, default pull-up; low at reset silences the boot log | Warning |
-| C10 | 0, 2, 4, 12–15, 25–27 (ADC2) | ADC2 can't be used while Wi-Fi is on | Error if both are in the spec |
+| C10 | 0, 2, 4, 12–15, 25–27 (ADC2) | ADC2 can't be used while Wi-Fi is on | Error for an ADC function with Wi-Fi on; warning for any other use of an ADC2 pin with Wi-Fi on (decided 2026-11-17) |
 | C11 | 36, 39 | Don't use their interrupts with ADC, or with Wi-Fi/Bluetooth plus sleep (ECO item GPIO-3.11) | Error |
 | C12 | 1 (TX), 3 (RX) | UART0, used for flashing and the console | Error unless the console is moved and the gate approves |
 | C13 | 12–15 | JTAG pins | Warning if JTAG debugging is enabled |
@@ -195,8 +195,11 @@ These tables are the first real rule files, drafted from Espressif's [ESP-IDF GP
 | --- | --- | --- | --- |
 | W1 | 6–11 | Connected to the module's integrated flash | Error |
 | W2 | 16, 17 | No PSRAM, so these are ordinary GPIOs | Allowed |
-| W3 | 12 (MTDI) | Flash runs at 3.3 V, so GPIO12 must be low at reset. An external pull-up, or a peripheral that drives it high at power-up, breaks boot | Error on external pull-up; warning on any input that may be high at reset |
-| W4 | 0, 2, 5, 12, 15 | Strapping pins; anything attached must not force the wrong level at reset | Warning; the strap level at reset must be declared in the spec |
+| W3 | 12 (MTDI) | Flash runs at 3.3 V, so GPIO12 must be low at reset. An external pull-up, or a peripheral that drives it high at power-up, breaks boot | Error on external pull-up; warning on any input or output unless declared low at reset (decided 2026-11-17) |
+| W4 | 0, 2, 5, 12, 15 | Strapping pins; anything attached must not force the wrong level at reset | Warning only when the strap level at reset isn't declared in the spec (decided 2026-11-17) |
+| W5 | 37, 38 | Bonded on the chip but not brought out by the WROOM-32 module | Error (decided 2026-11-17) |
+
+Cross-pin rules: `OWNER` (one pin, two roles: error), `OPEN_DRAIN_PULL` (open-drain or I2C line with no pull: error), `FLOATING` (GPIO or interrupt input with no pull: error), `I2C_WEAK_PULL` (I2C line relying only on the ~45 kΩ internal pull-up: warning, decided 2026-11-17).
 
 Board rules (buttons, LEDs, USB-serial wiring) wait for the board description, since there's no schematic.
 
