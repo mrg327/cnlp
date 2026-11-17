@@ -137,3 +137,87 @@ def test_merge_state_lines_joins_split_states():
     merged = nl._merge_state_lines(text)
     assert "state busy: every 10 s do read; after 3 failed go to idle." in merged
     assert merged.count("state busy") == 1
+
+
+# ---- deterministic normalizations --------------------------------------------
+
+def _one(text, request):
+    c = Fake([text + "\nEND"] * 3)
+    return nl.translate(request, client=c)
+
+
+def test_output_pull_dropped_when_request_has_no_pull_wording():
+    t = '# from: "LED on 25 with a resistor in series"\ngpio 25 is output "led" with external pull-up.'
+    r = _one(t, "LED on 25 with a resistor in series, wifi off")
+    assert r.manifest.pins[0].pull == "none"
+    assert any(a.get("source") == "normalized" and "25" in a["field"] for a in r.assumptions)
+
+
+def test_output_pull_kept_when_request_asks_for_it():
+    t = '# from: "fan on 5 pulled down"\ngpio 5 is output "fan" with external pull-down.'
+    r = _one(t, "fan on 5 pulled down")
+    assert r.manifest.pins[0].pull == "external_down"
+
+
+def test_breakout_board_pullup_is_offboard():
+    t = ('# from: "sensor on 21"\ngpio 21 is i2c0 sda with external pull-up.\n'
+         'gpio 22 is i2c0 scl with external pull-up.')
+    r = _one(t, "I2C on 21 and 22. The breakout board has 4.7k pull-ups.")
+    assert {p.pull for p in r.manifest.pins} == {"external_offboard"}
+
+
+def test_board_pullup_stays_external_without_breakout_wording():
+    t = '# from: "button on 14"\ngpio 14 is input "button" with external pull-up.'
+    r = _one(t, "button on 14 with a 10k pull-up on the board")
+    assert r.manifest.pins[0].pull == "external_up"
+    assert not [a for a in r.assumptions if a.get("source") == "normalized"]
+
+
+def test_interrupt_wording_sets_function():
+    t = '# from: "button on 4"\ngpio 4 is input "button" with internal pull-up.'
+    r = _one(t, "button on IO4 with internal pullup that triggers an interrupt, led on 25")
+    assert r.manifest.pins[0].function == "interrupt"
+
+
+def test_wake_turns_deep_sleep_on():
+    t = '# from: "b"\ngpio 14 is input "b" with external pull-up wakes from deep sleep on low.'
+    r = _one(t, "b on 14")
+    assert r.manifest.features.deep_sleep is True
+    assert any(a["field"] == "features.deep_sleep" for a in r.assumptions)
+
+
+def test_nudge_when_questions_skip_named_pins():
+    bad = "# question: what pull?\nwifi is off.\nEND"
+    good = '# from: "pot on gpio 34"\ngpio 34 is input adc "pot" with no pull.\nEND'
+    c = Fake([bad, good] * 3)
+    r = nl.translate("pot on gpio 34, wifi off", client=c)
+    assert len(c.calls) == 6
+    assert "no statement for it" in c.calls[1]["messages"][-1]["content"]
+    assert r.manifest.pins[0].gpio == 34
+
+
+def test_no_nudge_without_questions():
+    c = Fake(["wifi is off.\nEND"] * 3)
+    nl.translate("pot on gpio 34", client=c)
+    assert len(c.calls) == 3
+
+
+def test_repeated_pin_statement_dropped():
+    t = ('# from: "b"\ngpio 14 is input "b" with external pull-up.\n'
+         '# from: "b"\ngpio 14 is input "b" with external pull-up.')
+    r = _one(t, "b on 14")
+    assert len(r.manifest.pins) == 1
+
+
+def test_unsupported_interrupt_dropped():
+    t = '# from: "button on 13"\ngpio 13 is input interrupt "button" with internal pull-up.'
+    r = _one(t, "button gpio13 input int pullup")
+    assert r.manifest.pins[0].function == "gpio"
+    assert any(a.get("source") == "normalized" for a in r.assumptions)
+
+
+def test_bare_state_merged_with_later_full_line():
+    text = "machine m starts in a.\nstate a: on x go to b.\nstate b.\nstate b: on y go to a.\n"
+    out = nl._merge_state_lines(text)
+    assert out.count("state b") == 1 and "state b: on y go to a." in out
+    assert nl._merge_state_lines("machine m starts in a.\nstate a: on x go to b.\nstate b: on y go to a.\nstate b.\n").count("state b") == 1

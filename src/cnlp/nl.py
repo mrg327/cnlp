@@ -41,8 +41,22 @@ Rules:
   resistor on the board, whether Wi-Fi is used, which module), do NOT invent a value. Write a
   line  # question: <plain-English question>  instead, and leave out the statement or the
   statement's unknown part is asked about. Only a statement you can write completely may appear.
-- "nothing on the board" or "no resistor" means with no pull. A resistor on the board or
-  breakout means external. Say internal pull only if the request asks for it.
+- But if a pin's number, direction and pull are all stated or obvious, WRITE its statement; do not
+  only ask questions. Never ask for a name, role or reset state: take the role from the request's
+  own words (LED, relay, buzzer, button, pot). Obvious: LED/relay/buzzer/motor = output with no
+  pull; button/switch = input; an analog sensor or pot = input adc with no pull; a UART line =
+  uartN tx|rx with no pull.
+- Outputs (LED, relay, buzzer...) are "with no pull" unless the request names a pull-up or pull-down
+  on that output; a series resistor is not a pull.
+- Pull on inputs: "internal pull-up" only if the request asks for the chip's pull. A resistor on
+  the ESP32 board itself = external. A resistor on the breakout/module/sensor board = off-board
+  pull-up (e.g. I2C breakout with its own pull-ups). "nothing on the board" = no pull, but a button
+  to ground with nothing said about a resistor is a question, not a guess.
+- "wakes the board from deep sleep" -> add "wakes from deep sleep on low|high" on that pin and
+  "deep sleep is on.". "triggers an interrupt" -> the pin is "input interrupt".
+- "int pullup" or "internal pullup" is the chip's internal pull-up; it is not an interrupt.
+- A UART used for a peripheral (GPS, modem) is not the console; write a console line only if the
+  request talks about serial debug/logging/console.
 - Do not write chip/module/board lines unless the request names them.
 - Before each statement write a line  # from: "<exact words from the request>".
 - Machine, state and event names are lowercase words; events and actions may be several words.
@@ -52,6 +66,16 @@ Example request: "LED on 25. Button on 4 to ground, no resistor on the board, wi
 gpio 25 is output "led" with no pull.
 # from: "Button on 4 to ground, no resistor on the board"
 gpio 4 is input "button" with no pull.
+# from: "wifi off"
+wifi is off.
+END
+
+Example request: "Pot on 34, I2C sensor breakout on 21/22 that has its own pull-ups, wifi off."
+# from: "Pot on 34"
+gpio 34 is input adc "pot" with no pull.
+# from: "I2C sensor breakout on 21/22 that has its own pull-ups"
+gpio 21 is i2c0 sda with off-board pull-up.
+gpio 22 is i2c0 scl with off-board pull-up.
 # from: "wifi off"
 wifi is off.
 END
@@ -104,6 +128,9 @@ class TranslateResult:
 _STATE_LINE = re.compile(r"^state ([a-z][a-z0-9_]*):\s*(.*?)\.\s*$")
 
 
+_BARE_STATE = re.compile(r"^state ([a-z][a-z0-9_]*)\.\s*$")
+
+
 def _merge_state_lines(text: str) -> str:
     """Join repeated `state X: ...` lines of one machine into the first one.
 
@@ -115,15 +142,115 @@ def _merge_state_lines(text: str) -> str:
     for line in text.splitlines():
         if line.startswith("machine "):
             seen = {}
+        bare = _BARE_STATE.match(line.strip())
+        if bare:
+            if bare.group(1) in seen:  # already declared: a bare repeat adds nothing
+                continue
+            seen[bare.group(1)] = len(out)
+            out.append(line)
+            continue
         m = _STATE_LINE.match(line.strip())
         if m and m.group(1) in seen:
             i = seen[m.group(1)]
-            out[i] = out[i].rstrip()[:-1] + "; " + m.group(2) + "."
+            if _BARE_STATE.match(out[i].strip()):  # earlier bare `state X.` gets its transitions
+                out[i] = line
+            else:
+                out[i] = out[i].rstrip()[:-1] + "; " + m.group(2) + "."
             continue
         if m:
             seen[m.group(1)] = len(out)
         out.append(line)
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
+_PIN_LINE = re.compile(
+    r'^gpio (?P<n>\d+) is (?P<mode>input|output|open-drain|(?:i2c|spi|uart)\d [a-z]+)(?P<func> (?:adc|dac|interrupt|pwm))?'
+    r'(?P<role> "[^"]*")?(?P<pull> with (?:(?:internal|external|off-board) pull-(?:up|down)|no pull))?'
+    r'(?P<wake> wakes from deep sleep on (?:low|high))?\.$')
+_OFFBOARD = re.compile(r"\b(?:breakout|module|sensor|peripheral|daughter|add-?on)\s+board\b"
+                       r"|\boff[- ]?board\b|\bon the (?:breakout|sensor|module)\b", re.IGNORECASE)
+_PULL_WORD = re.compile(r"\bpull(?:ed)?[ -]?(?:up|down)s?\b|\bpullups?\b|\bpulldowns?\b", re.IGNORECASE)
+_INTERRUPT_WORD = re.compile(r"\binterrupts?\b|\bisr\b|\bedge\b|\btriggers?\b|\bwake", re.IGNORECASE)
+_CLAUSE_SPLIT = re.compile(r"[.;!?\n,]")
+
+
+def _clauses_about(request: str, gpio: str, *, whole_sentence: bool = False) -> str:
+    """Request text near a pin: the clauses (or sentences) that name its number."""
+    splitter = re.compile(r"[.;!?\n]") if whole_sentence else _CLAUSE_SPLIT
+    return " ".join(c for c in splitter.split(request) if re.search(rf"(?<!\d){gpio}(?!\d)", c))
+
+
+def _normalize(text: str, request: str) -> tuple[str, list[dict]]:
+    """Unambiguous, deterministic fixes to a sample before it is parsed or voted on.
+
+    Every change is returned as a note so the person can see it. Anything
+    ambiguous is left alone (the checkers or the vote will turn it into a question).
+    """
+    out: list[str] = []
+    notes: list[dict] = []
+    quote = ""
+    wants_sleep = False
+    for line in text.splitlines():
+        s = line.strip()
+        qm = re.match(r'#\s*from:\s*"?(.*?)"?\s*$', s)
+        if qm:
+            quote = qm.group(1)
+        m = _PIN_LINE.match(s)
+        if m:
+            n, pull, func = m["n"], m["pull"], m["func"]
+            near = quote + " " + _clauses_about(request, n)
+            sentences = quote + " " + _clauses_about(request, n, whole_sentence=True)
+            if m["mode"] == "output" and pull and pull != " with no pull" \
+                    and not _PULL_WORD.search(near):
+                notes.append({"field": f"gpio {n} pull", "value": "no pull", "source": "normalized",
+                              "question": f"GPIO {n} is an output; dropped the pull the request never mentioned."})
+                pull = " with no pull"
+            elif pull and re.search(r"external pull-(?:up|down)", pull) and m["mode"] != "output" \
+                    and (_OFFBOARD.search(sentences) or (m["mode"].startswith("i2c") and
+                                                          _OFFBOARD.search(request))):
+                pull = pull.replace("external", "off-board")
+                notes.append({"field": f"gpio {n} pull", "value": "off-board pull-up",
+                              "source": "normalized",
+                              "question": f"The request puts the resistor on the breakout/module board, "
+                                          f"so GPIO {n} is off-board, not external."})
+            if m["mode"] == "input" and func is None and re.search(r"\binterrupts?\b", near, re.IGNORECASE):
+                func = " interrupt"
+                notes.append({"field": f"gpio {n} function", "value": "interrupt",
+                              "source": "normalized",
+                              "question": f"The request says GPIO {n} triggers an interrupt."})
+            if func == " interrupt" and not _INTERRUPT_WORD.search(near):
+                func = None
+                notes.append({"field": f"gpio {n} function", "value": "gpio", "source": "normalized",
+                              "question": f"The request never says GPIO {n} triggers an interrupt; "
+                                          "dropped it."})
+            wants_sleep = wants_sleep or bool(m["wake"])
+            line = (f"gpio {n} is {m['mode']}{func or ''}{m['role'] or ''}{pull or ''}"
+                    f"{m['wake'] or ''}.")
+        if _PIN_LINE.match(s) and line in out:  # the model repeated a pin statement verbatim
+            continue
+        out.append(line)
+    res = "\n".join(out) + ("\n" if text.endswith("\n") else "")
+    if wants_sleep and not re.search(r"(?m)^deep sleep is\b", res):
+        res = "deep sleep is on.\n" + res
+        notes.append({"field": "features.deep_sleep", "value": True, "source": "normalized",
+                      "question": "A pin wakes from deep sleep, so deep sleep is on."})
+    return res, notes
+
+
+def _pin_numbers_in(request: str) -> set[int]:
+    """GPIO numbers the request names plainly (gpio 4, IO4, pin 4, D4, 'on 25')."""
+    nums = set()
+    for m in re.finditer(r"(?<![a-z0-9])(?:gpios?|io|pins?|d)\s*#?(\d{1,2})(?!\d)"
+                         r"(?:\s*(?:,|and|&|/)\s*#?(\d{1,2})(?!\d))*", request, re.IGNORECASE):
+        nums.update(int(x) for x in re.findall(r"\d+", m.group(0)))
+    for m in re.finditer(r"\bon (\d{1,2})\b(?!\s*(?:k|v|s|ms|hz|min|sec|%|x))", request, re.IGNORECASE):
+        nums.add(int(m.group(1)))
+    return {n for n in nums if n <= 39}
+
+
+def _missing_pins(text: str, request: str) -> list[int]:
+    stated = {int(x) for x in re.findall(r"(?m)^gpio (\d+) is\b", text)}
+    return sorted(_pin_numbers_in(request) - stated)
 
 
 def _strip_end(text: str) -> str:
@@ -243,19 +370,41 @@ def _disagreements(manifests: list[Manifest]) -> list[dict]:
     return out
 
 
-def _one_sample(client, messages: list[dict], seed: int, board: str):
-    """Return (raw_text, manifest|None, errors, assumptions_from_defaults)."""
+NUDGE = ("The request names GPIO {pins} but your spec has no statement for {them}. Write a "
+         "statement for every pin whose direction is stated or obvious from the request (LED, "
+         "relay, buzzer = output with no pull; analog sensor or pot = input adc with no pull; "
+         "UART pins = uartN tx|rx with no pull). Never ask for a name or role. Ask a question only "
+         "about what is truly missing. Output the full spec, ending with END.")
+
+
+def _prep(raw: str, request: str) -> tuple[str, list[dict]]:
+    return _normalize(_merge_state_lines(_strip_end(raw)), request)
+
+
+def _one_sample(client, messages: list[dict], seed: int, board: str, request: str = ""):
+    """Return (raw_text, manifest|None, errors, assumptions, full_text)."""
     raw = client.complete(messages, grammar=gbnf.grammar(), temperature=0.7,
                           max_tokens=1500, seed=seed)
-    text = _merge_state_lines(_strip_end(raw))
+    text, norm_notes = _prep(raw, request)
+    # A sample that asked questions yet skipped pins the request plainly names gets one nudge.
+    missing = _missing_pins(text, request)
+    if missing and _questions_in(text):
+        nudge = NUDGE.format(pins=", ".join(map(str, missing)),
+                             them="it" if len(missing) == 1 else "them")
+        raw2 = client.complete(
+            messages + [{"role": "assistant", "content": raw}, {"role": "user", "content": nudge}],
+            grammar=gbnf.grammar(), temperature=0.7, max_tokens=1500, seed=seed + 200)
+        text2, notes2 = _prep(raw2, request)
+        if len(_missing_pins(text2, request)) < len(missing):
+            raw, text, norm_notes = raw2, text2, notes2
     for attempt in (0, 1):
         full, notes = _ensure_defaults(text, board)
         try:
-            return text, cnl.parse(full), [], notes, full
+            return text, cnl.parse(full), [], notes + norm_notes, full
         except cnl.CnlError as e:
             errors = e.to_list()
             if attempt:
-                return text, None, errors, notes, full
+                return text, None, errors, notes + norm_notes, full
             msg = ("Your output had these errors:\n"
                    + "\n".join(f"- {x['message']}" for x in errors)
                    + "\nOutput the full corrected spec, ending with END.")
@@ -263,7 +412,7 @@ def _one_sample(client, messages: list[dict], seed: int, board: str):
                 messages + [{"role": "assistant", "content": raw},
                             {"role": "user", "content": msg}],
                 grammar=gbnf.grammar(), temperature=0.7, max_tokens=1500, seed=seed + 100)
-            text = _merge_state_lines(_strip_end(raw))
+            text, norm_notes = _prep(raw, request)
     raise AssertionError("unreachable")
 
 
@@ -274,7 +423,8 @@ def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOAR
     good: list[tuple[str, Manifest, list[dict], str]] = []  # (raw, manifest, notes, full)
     last_errors: list[dict] = []
     for i in range(n):
-        text, m, errors, notes, full = _one_sample(client, messages, seed=1000 + i, board=board)
+        text, m, errors, notes, full = _one_sample(client, messages, seed=1000 + i, board=board,
+                                                    request=request)
         res.samples.append(text)
         if m is None:
             res.parse_failures += 1

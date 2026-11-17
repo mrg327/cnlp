@@ -208,3 +208,15 @@ user's full extension set until that key is removed (user's call).
   after (measured by me on a fresh copy), 27/27 answers fully grounded.
   The one miss was a correct `cnlp status` suggestion where an answer was
   expected; state questions may now be answered either way.
+
+## Translator: clear requests (2026-11-17)
+
+Deterministic normalization of each sample before voting (each change is
+listed as an assumption): invented pulls on outputs dropped, "on the
+breakout/module" pulls become off-board, interrupt/wake wording mapped,
+`deep sleep is on` added for wake pins, duplicates removed; bare
+`state X.` lines merged; one retry when a sample only asks questions about
+pins the request plainly names. Eval: clear 7/15 -> 14/15, total 52/61 ->
+58/61 (runs: 56, 56, 58); state machines 8/10 (baseline 9/10, swing 7-9).
+Remaining: a spurious SPI pin (clear-014); state machines with missing
+transitions or invented states; role-wording disagreements between samples.
