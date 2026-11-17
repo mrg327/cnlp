@@ -1,0 +1,10 @@
+chip is esp32.
+module is esp32-wroom-32.
+board is devkit-v1.
+wifi is off.
+bluetooth is off.
+console is on uart0.
+gpio 25 is output "led" with no pull.
+gpio 4 is input "button" with internal pull-up.
+gpio 21 is i2c0 sda with external pull-up.
+gpio 22 is i2c0 scl with external pull-up.

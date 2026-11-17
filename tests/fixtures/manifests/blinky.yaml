@@ -1,0 +1,12 @@
+# Expected manifest for examples/blinky/spec.cnl. Shared contract between cnl, codegen and readback.
+chip: esp32
+module: esp32-wroom-32
+board: devkit-v1
+idf_version: "5.5.6"
+features: {wifi: false, bluetooth: false, deep_sleep: false, console: uart0, jtag: false}
+pins:
+  - {gpio: 25, role: led, mode: output, pull: none, function: gpio}
+  - {gpio: 4, role: button, mode: input, pull: internal_up, function: gpio}
+  - {gpio: 21, role: i2c0_sda, mode: open_drain, pull: external_up, function: i2c, bus: i2c0_sda}
+  - {gpio: 22, role: i2c0_scl, mode: open_drain, pull: external_up, function: i2c, bus: i2c0_scl}
+state_machines: []

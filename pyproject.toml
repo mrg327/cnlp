@@ -1,0 +1,35 @@
+[project]
+name = "cnlp"
+version = "0.1.0"
+description = "Plain-English requests to gated, verified ESP32 firmware"
+readme = "README.md"
+authors = [
+    { name = "Matthew Ghere", email = "matthewghere327@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "jinja2>=3.1.6",
+    "jsonschema>=4.26.0",
+    "lark>=1.3.1",
+    "pyserial>=3.5",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+cnlp = "cnlp.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

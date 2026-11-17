@@ -4,7 +4,23 @@ Turns a plain-English request into ESP32 C firmware and checks it against
 deterministic gates. Models propose; deterministic tools and user approval
 gates decide.
 
-**Status:** design only. Nothing is implemented yet.
+**Status:** MVP. The deterministic path works end to end on a WROOM-32:
+controlled English → manifest → pin rules → generated C → build → gates →
+flash → register readback. No model is in the loop yet (see docs/PLAN.md).
+
+## Try it
+
+```bash
+uv sync
+P=examples/blinky
+uv run cnlp --project $P translate      # spec.cnl -> .cnlp/manifest.yaml
+uv run cnlp --project $P check-pins     # chip + module rules
+uv run cnlp --project $P gen            # components/board/
+uv run cnlp --project $P gate next      # review; then: gate answer <id> <hash> approve "<note>"
+(cd $P && idf.py build)                 # ESP-IDF v5.5.6 environment
+uv run cnlp --project $P gate next      # flash gate shows the image hash
+uv run cnlp --project $P flash          # flashes only the approved image, then diffs readback
+```
 
 ## How it works
 
@@ -38,6 +54,7 @@ the spec, not to claim it is "correct".
   interfaces, draft rule tables, the build plan, known-bad test cases and
   the verify-first list. Diagrams appear as placeholders here; they live in
   the shared design doc.
+- [docs/PLAN.md](docs/PLAN.md): the working plan, broken into ordered steps.
 
 ## Before building
 

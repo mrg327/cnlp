@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cnlp/manifest.schema.json",
+  "title": "cnlp pin manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chip", "module", "board", "idf_version", "features", "pins"],
+  "properties": {
+    "chip": {"enum": ["esp32"]},
+    "module": {"enum": ["esp32-wroom-32"]},
+    "board": {"type": "string", "minLength": 1},
+    "idf_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"},
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wifi", "bluetooth", "deep_sleep", "console", "jtag"],
+      "properties": {
+        "wifi": {"type": "boolean"},
+        "bluetooth": {"type": "boolean"},
+        "deep_sleep": {"type": "boolean"},
+        "console": {"enum": ["uart0", "uart1", "uart2", "usb", "none"]},
+        "jtag": {"type": "boolean"}
+      }
+    },
+    "pins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gpio", "role", "mode", "pull"],
+        "properties": {
+          "gpio": {"type": "integer", "minimum": 0, "maximum": 39},
+          "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "mode": {"enum": ["input", "output", "open_drain"]},
+          "function": {"enum": ["gpio", "adc", "dac", "interrupt", "pwm", "i2c", "spi", "uart"]},
+          "bus": {"type": "string", "pattern": "^(i2c|spi|uart)[0-9]_(sda|scl|tx|rx|mosi|miso|sclk|cs)$"},
+          "pull": {"enum": ["none", "internal_up", "internal_down", "external_up", "external_down", "external_offboard"]},
+          "wake": {"enum": ["low", "high"]},
+          "reset_level": {"enum": ["low", "high"]},
+          "source": {"type": "string"}
+        }
+      }
+    },
+    "state_machines": {"type": "array"}
+  }
+}

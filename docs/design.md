@@ -104,27 +104,35 @@ The parser produces a manifest like this, and a plain Python checker enforces pe
 
 ```yaml
 chip: esp32
-module: esp32-wrover-e     # module rules: PSRAM reserves GPIO16/17
-board: my-board-rev-b      # board rules: what the PCB connects
-idf_version: "5.4"         # pinned; capability macros can change between releases
+module: esp32-wroom-32     # module rules: no PSRAM, 3.3 V flash
+board: my-board-rev-a      # board rules: what the PCB connects
+idf_version: "5.5.6"       # pinned; capability macros can change between releases
+features:                  # chip-wide facts that pin rules depend on (C10–C13)
+  wifi: false
+  bluetooth: false
+  deep_sleep: true
+  console: uart0           # GPIO1/3 stay reserved (C12)
+  jtag: false
 pins:
   - gpio: 21
     role: i2c0_sda
     mode: open_drain
-    pull: external_up      # 4.7k on the board, matched against the netlist
+    pull: external_up      # declared by the user; approved at the hardware-risk gate
   - gpio: 22
     role: i2c0_scl
     mode: open_drain
     pull: external_offboard  # pull-up lives on the sensor breakout; needs gate approval
   - gpio: 34
-    role: battery_adc
+    role: battery
     mode: input
+    function: adc          # ADC1, so C10 doesn't apply
     pull: none
   - gpio: 4
     role: button
     mode: input
+    function: interrupt
     pull: internal_up
-    wake: ext0
+    wake: low              # ext0 wake on a low level
 ```
 
 Rules come in three layers, applied in order: chip, then module, then board. A pin is usable only if every layer allows it. If the request doesn't name the module and board, the intent gate asks before anything else runs.
@@ -473,9 +481,10 @@ These are first drafts of every interface the engine exposes, so an implementing
 spec        = { statement "." } ;
 statement   = pin_stmt | state_stmt | hw_stmt ;
 
-pin_stmt    = "gpio" INT "is" mode [ role ] [ pull ] [ wake ] ;
+pin_stmt    = "gpio" INT "is" mode [ function ] [ role ] [ pull ] [ wake ] ;
 mode        = "input" | "output" | "open-drain" | periph ;
-periph      = BUS INT ( "sda" | "scl" | "tx" | "rx" | "mosi" | "miso" | "sclk" | "cs" ) ;
+periph      = PERIPH ( "sda" | "scl" | "tx" | "rx" | "mosi" | "miso" | "sclk" | "cs" ) ;
+function    = "adc" | "dac" | "interrupt" | "pwm" ;  (* "gpio 34 is input adc "battery"" *)
 role        = STRING ;                                (* "button" *)
 pull        = "with" ( "internal" | "external" | "off-board" ) ( "pull-up" | "pull-down" )
             | "with no pull" ;
@@ -486,16 +495,28 @@ transition  = trigger "go to" NAME
             | "every" DURATION action
             | "after" INT "failures go to" NAME ;
 trigger     = "on" EVENT ;
+action      = WORD { WORD } ;                         (* "read sensor"; ends at ";" or "." *)
 
 hw_stmt     = "chip is" NAME | "module is" NAME | "board is" NAME
-            | "gpio" INT "is" ( "high" | "low" ) "at reset" ;   (* strap level, rule W4 *)
+            | "gpio" INT "is" ( "high" | "low" ) "at reset"     (* strap level, rule W4 *)
+            | ( "wifi" | "bluetooth" | "deep sleep" | "jtag" ) "is" ( "on" | "off" )
+            | "console is on" ( "uart0" | "uart1" | "uart2" | "usb" | "nothing" ) ;
+
+(* Tokens *)
+PERIPH      = ( "i2c" | "spi" | "uart" ) DIGIT ;      (* one token: "i2c0", never "i2c 0" *)
+EVENT       = WORD { WORD } ;                         (* "button press"; ends at "go to" *)
+NAME        = WORD ;                                  (* lowercase identifier, may contain "_" *)
+DURATION    = INT ( "ms" | "s" | "min" ) ;
+(* Reserved words, never part of EVENT, NAME or an action: "go", "to", "on", "every", "after", "is", "with" *)
 ```
+
+Features default to off and the console to `uart0`. A feature the request never mentions becomes an *assumption* and a completeness question at the intent gate.
 
 The GBNF grammar for Qwen's constrained output is generated from this file, so the two can't drift apart.
 
 ### Manifest
 
-YAML, as in the example above, validated against a JSON Schema. Required top-level fields: `chip`, `module`, `board`, `idf_version`, `pins[]`, `state_machines[]`. Each pin has `gpio`, `role`, `mode` and `pull` (one of `none`, `internal_up`, `internal_down`, `external_up`, `external_down`, `external_offboard`), plus optional `wake`, `reset_level` and `source` (the request sentence it came from, or `assumption`).
+YAML, as in the example above, validated against a JSON Schema. Required top-level fields: `chip`, `module`, `board`, `idf_version`, `features`, `pins[]`, `state_machines[]`. `features` holds `wifi`, `bluetooth`, `deep_sleep` (booleans), `console` (`uart0`, `uart1`, `uart2`, `usb` or `none`) and `jtag` (boolean); rules C10–C13 read it. Each pin has `gpio`, `role`, `mode` and `pull` (one of `none`, `internal_up`, `internal_down`, `external_up`, `external_down`, `external_offboard`), plus optional `function` (`gpio`, `adc`, `dac`, `interrupt`, `pwm`; default `gpio`), `wake`, `reset_level` and `source` (the request sentence it came from, or `assumption`). Peripheral pins carry their bus in `role` (`i2c0_sda`), so their function is implied.
 
 ### Engine command-line interface
 
@@ -592,8 +613,8 @@ These assumptions are untested. Phase 0 checks each one before the build depends
 
 - [ ] **cdecl on ESP-IDF code:** after stripping known attribute macros (`IRAM_ATTR` and similar), does `cdecl explain` parse the project's declarations? If not, does the preprocessed (`-E`) route work?
 - [ ] **Static analysis:** does `idf.py clang-check` work with the pinned IDF version on the classic ESP32? If not, confirm the cppcheck plus host clang-tidy fallback.
-- [ ] **Static asserts:** do `GPIO_IS_VALID_OUTPUT_GPIO` and related macros compile inside `_Static_assert` with the pinned IDF version?
-- [ ] **Register readback:** does `gpio_dump_io_configuration()` exist in the pinned IDF version, and is its serial output stable enough to parse and diff?
+- [x] **Static asserts:** do `GPIO_IS_VALID_OUTPUT_GPIO` and related macros compile inside `_Static_assert` with the pinned IDF version? *Yes on v5.5.6 (2026-11-17, `spikes/phase0a`).*
+- [x] **Register readback:** does `gpio_dump_io_configuration()` exist in the pinned IDF version, and is its serial output stable enough to parse and diff? *Yes on v5.5.6: two consecutive dumps were identical. Note: a GPIO-matrix output shows `OutputEn: [periph_sig_ctrl]` with `SigOut ID: 256`, not `OutputEn: 1`; an unconfigured pin shows `InputEn: 0`. Flashing this board needs `-b 115200`; 460800 fails. Fixture: `tests/fixtures/readback/spike_phase0a.log`.*
 - [ ] **Sandbox:** does the chosen sandbox (for example, `pi-permission-modes` with bubblewrap) actually block serial devices, `esptool` and `espefuse` on this machine? Try it with a deliberate attempt.
 - [ ] **Pi hook fields:** which input field holds the file path in Pi's `write` and `edit` tool calls for the installed version? The skeleton assumes `path`.
 - [ ] **Qwen budget:** with `--n-cpu-moe` on the 16 GB GPU, what speed and context size are usable, and how much system RAM does it need?

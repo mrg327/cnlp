@@ -1,0 +1,25 @@
+# Module rules for ESP32-WROOM-32 (3.3 V flash, no PSRAM). Draft; needs review.
+module: esp32-wroom-32
+chip: esp32
+
+pin_sets:
+  flash: [6, 7, 8, 9, 10, 11]
+  psram_free: [16, 17]            # W2: no PSRAM, so C4 does not apply
+  strapping: [0, 2, 5, 12, 15]    # W4
+  mtdi: [12]                      # W3
+
+rules:
+  W1:
+    severity: error
+    message: "GPIO {gpio} ({role}): this pin is connected to the module's integrated flash. Move to a free GPIO such as 25."
+  W3_EXTERNAL_PULLUP:
+    id: W3
+    severity: error
+    message: "GPIO 12 ({role}): the flash runs at 3.3 V, so GPIO 12 must be low at reset, and an external pull-up breaks boot. Remove the pull-up or move to another pin such as GPIO 25."
+  W3_INPUT:
+    id: W3
+    severity: warning
+    message: "GPIO 12 ({role}): GPIO 12 must be low at reset on this module, and this input may be high then. Declare reset_level: low, or move to another pin such as GPIO 25."
+  W4:
+    severity: warning
+    message: "GPIO {gpio} ({role}): strapping pin; whatever is attached must not force the wrong level at reset. {detail}"

@@ -1,0 +1,355 @@
+dd�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:6180
+load:0x40078000,len:15852
+load:0x40080400,len:3876
+entry 0x4008063c
+I (27) boot: ESP-IDF v5.5.6 2nd stage bootloader
+I (27) boot: compile time Nov 17 2026 10:44:02
+I (28) boot: chip revision: v3.1
+I (29) boot.esp32: SPI Speed      : 40MHz
+I (32) boot.esp32: SPI Mode       : DIO
+I (36) boot.esp32: SPI Flash Size : 2MB
+I (39) boot: Partition Table:
+I (42) boot: ## Label            Usage          Type ST Offset   Length
+I (48) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (55) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (61) boot:  2 factory          factory app      00 00 00010000 00100000
+I (68) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=09de4h ( 40420) map
+I (89) esp_image: segment 1: paddr=00019e0c vaddr=3ffb0000 size=02834h ( 10292) load
+I (93) esp_image: segment 2: paddr=0001c648 vaddr=40080000 size=039d0h ( 14800) load
+I (100) esp_image: segment 3: paddr=00020020 vaddr=400d0020 size=10a9ch ( 68252) map
+I (124) esp_image: segment 4: paddr=00030ac4 vaddr=400839d0 size=09540h ( 38208) load
+I (139) esp_image: segment 5: paddr=0003a00c vaddr=50000000 size=00020h (    32) load
+I (146) boot: Loaded app from partition at offset 0x10000
+I (153) cpu_start: Multicore app
+I (161) cpu_start: GPIO 3 and 1 are used as console UART I/O pins
+I (161) cpu_start: Pro cpu start user code
+I (161) cpu_start: cpu freq: 160000000 Hz
+I (163) app_init: Application information:
+I (167) app_init: Project name:     phase0a
+I (171) app_init: App version:      2fd5529-dirty
+I (175) app_init: Compile time:     Nov 17 2026 10:43:46
+I (180) app_init: ELF file SHA256:  e77ef55a2...
+I (185) app_init: ESP-IDF:          v5.5.6
+I (188) efuse_init: Min chip rev:     v0.0
+I (192) efuse_init: Max chip rev:     v3.99 
+I (196) efuse_init: Chip rev:         v3.1
+I (200) heap_init: Initializing. RAM available for dynamic allocation:
+I (207) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM
+I (212) heap_init: At 3FFB3100 len 0002CF00 (179 KiB): DRAM
+I (217) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM
+I (222) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM
+I (228) heap_init: At 4008CF10 len 000130F0 (76 KiB): IRAM
+I (234) spi_flash: detected chip: generic
+I (237) spi_flash: flash io: dio
+W (240) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+I (252) main_task: Started on CPU0
+I (252) main_task: Calling app_main()
+=== DUMP 0 BEGIN ===
+================IO DUMP Start================
+IO[4] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: 0, OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  GPIO Matrix SigIn ID: (simple GPIO input)
+  SleepSelEn: 0
+
+IO[21] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[22] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[25] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  SleepSelEn: 0
+
+IO[34] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+=================IO DUMP End=================
+=== DUMP 0 END ===
+=== DUMP 1 BEGIN ===
+================IO DUMP Start================
+IO[4] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: 0, OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  GPIO Matrix SigIn ID: (simple GPIO input)
+  SleepSelEn: 0
+
+IO[21] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[22] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[25] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  SleepSelEn: 0
+
+IO[34] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+=================IO DUMP End=================
+=== DUMP 1 END ===
+=== FULL BEGIN ===
+================IO DUMP Start================
+IO[0] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[1] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[2] -
+  Pullup: 0, Pulldown: 1, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[3] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[4] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: 0, OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  GPIO Matrix SigIn ID: (simple GPIO input)
+  SleepSelEn: 0
+
+IO[5] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[6] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 1 (IOMUX)
+  SleepSelEn: 0
+
+IO[7] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 1
+  GPIO Matrix SigIn ID: 1
+  SleepSelEn: 0
+
+IO[8] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 2
+  GPIO Matrix SigIn ID: 2
+  SleepSelEn: 0
+
+IO[9] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 3
+  GPIO Matrix SigIn ID: 3
+  SleepSelEn: 0
+
+IO[10] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 4
+  GPIO Matrix SigIn ID: 4
+  SleepSelEn: 0
+
+IO[11] **RESERVED** -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 5
+  GPIO Matrix SigIn ID: (simple GPIO input)
+  SleepSelEn: 0
+
+IO[12] -
+  Pullup: 0, Pulldown: 1, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[13] -
+  Pullup: 0, Pulldown: 1, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[14] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[15] -
+  Pullup: 1, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[16] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[17] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[18] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[19] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[20] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[21] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[22] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[23] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[25] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 2 (GPIO)
+  GPIO Matrix SigOut ID: 256 (simple GPIO output)
+  SleepSelEn: 0
+
+IO[26] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[27] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 1, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[32] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[33] -
+  Pullup: 0, Pulldown: 0, DriveCap: 2
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[34] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[35] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[36] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[37] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[38] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+IO[39] -
+  Pullup: 0, Pulldown: 0, DriveCap: 0
+  InputEn: 0, OutputEn: [periph_sig_ctrl], OpenDrain: 0
+  FuncSel: 0 (IOMUX)
+  SleepSelEn: 0
+
+=================IO DUMP End=================
+=== FULL END ===
+I (922) main_task: Returned from app_main()
+
