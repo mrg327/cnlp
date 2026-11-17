@@ -51,6 +51,25 @@ Read REPORT first. FACTS are the ground truth for phase and progress. NEXT is a
 list of suggestions, not work Qwen will do. If Qwen's answer disagrees with the
 tool output, trust the tool output and ask again.
 
+### Without the model: `/cnlp`
+
+Inside Pi you can run cnlp yourself and see its normal output directly in the
+transcript. The model isn't involved, so it's fast and exact:
+
+```
+/cnlp status
+/cnlp audit
+/cnlp try 'gpio 26 is input "enc sw" with internal pull-up.'
+/cnlp verify-plan R4
+/cnlp rules --needs-review
+/cnlp help
+```
+
+Add `--share` to also hand the output to the model for its next turn. Commands
+that record something or touch hardware (`evidence add`, `measure`, `flash`,
+`gate`) are never run from `/cnlp`; it shows the exact command to run in your
+shell instead.
+
 ## 3. After each change: `cnlp audit`
 
 ```bash
