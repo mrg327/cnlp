@@ -168,7 +168,21 @@ def _to_lark(g: str | None = None) -> str:
                 parts.append("/" + m["cls"].replace("/", "\\/") + "/")
             elif m["rep"]:
                 lo, _, hi = m["rep"][1:-1].partition(",")
-                parts.append(f"~{lo}..{hi}" if hi else f"~{lo}")
+                if parts and parts[-1].startswith("/[") and parts[-1].endswith("]/"):
+                    # Repeat of a character class: fold it into the regex terminal. Exact
+                    # bounds, and Lark doesn't expand `~0..30` into dozens of alternatives
+                    # (that made building the test parser take ~50 s).
+                    # Dynamic Earley rejects zero-width regexps, so {0,n} becomes ({1,n})?.
+                    lo1 = "1" if lo == "0" else lo
+                    rx = parts[-1][:-1] + "{" + (f"{lo1},{hi}" if hi else lo1) + "}/"
+                    parts[-1] = f"({rx})?" if lo == "0" else rx
+                elif lo == "0":
+                    # Structural {0,n}: the bound only keeps the model's output finite and is
+                    # checked textually (test_grammar_has_terminator_and_is_bounded). Lark's
+                    # `~0..n` expansion made building one test parser take ~25-50 s.
+                    parts.append("*")
+                else:
+                    parts.append(f"~{lo}..{hi}" if hi else f"~{lo}")
             elif m["name"]:
                 parts.append(m["name"].replace("-", "_"))
             else:
