@@ -31,7 +31,8 @@ def test_agreement_defaults_sources():
     c = Fake([sample()] * 3)
     r = nl.translate("LED on 25, button on 4", client=c)
     assert r.agreed and r.ok and r.parse_failures == 0
-    assert len(c.calls) == 3 and len({x["seed"] for x in c.calls}) == 3
+    assert len(c.calls) == 2 and len({x["seed"] for x in c.calls}) == 2  # third sample skipped
+    assert r.stats["calls"] == 2 and r.stats["seconds"] >= 0
     assert all(x["grammar"] for x in c.calls)
     assert r.sources == {25: "LED on 25", 4: "button on 4 to ground"}
     fields = {a["field"] for a in r.assumptions}
@@ -193,7 +194,7 @@ def test_nudge_when_questions_skip_named_pins():
     good = '# from: "pot on gpio 34"\ngpio 34 is input adc "pot" with no pull.\nEND'
     c = Fake([bad, good] * 3)
     r = nl.translate("pot on gpio 34, wifi off", client=c)
-    assert len(c.calls) == 6
+    assert len(c.calls) == 4
     assert "no statement for it" in c.calls[1]["messages"][-1]["content"]
     assert r.manifest.pins[0].gpio == 34
 
@@ -201,7 +202,7 @@ def test_nudge_when_questions_skip_named_pins():
 def test_no_nudge_without_questions():
     c = Fake(["wifi is off.\nEND"] * 3)
     nl.translate("pot on gpio 34", client=c)
-    assert len(c.calls) == 3
+    assert len(c.calls) == 2
 
 
 def test_repeated_pin_statement_dropped():
@@ -392,7 +393,7 @@ def test_staged_translate_uses_planned_names_only():
     kinds = [("plan" if x["json_schema"] else "fsm" if "machine" in (x["grammar"] or "").split("\n")[0]
               else "pins") for x in c.calls]
     assert kinds[0] == "plan" and kinds.count("plan") == 1
-    assert kinds.count("fsm") == 3 and kinds.count("pins") == 3
+    assert kinds.count("fsm") == 2 and kinds.count("pins") == 2  # early stop after 2 agree
     pin_grammar = next(x["grammar"] for x in c.calls if x["grammar"] and "gnum" in x["grammar"])
     assert "machine ::=" not in pin_grammar and 'gnum ::= "4"' in pin_grammar
     assert not [q for q in r.questions if "state" in q.lower()]
@@ -507,3 +508,34 @@ def test_sort_transitions_drops_exact_repeats():
     from cnlp import nl_fsm
     assert nl_fsm.sort_transitions("state a: on x go to b; on x go to b; on y go to a.\n") \
         == "state a: on x go to b; on y go to a.\n"
+
+
+def test_early_stop_only_when_first_two_agree():
+    c = Fake([sample("internal pull-up"), sample("no pull"), sample("no pull")])
+    r = nl.translate("x", client=c)
+    assert len(c.calls) == 3 and not r.agreed
+    c = Fake([sample(), sample(), sample("internal pull-up")])
+    r = nl.translate("x", client=c)
+    assert len(c.calls) == 2 and r.agreed
+    c = Fake([sample()] * 3)
+    nl.translate("x", client=c, n=1)
+    assert len(c.calls) == 1
+
+
+def test_plan_computed_once_and_machine_prompt_shared_across_samples():
+    c = Staged()
+    r = nl.translate(STATEFUL, client=c, n=3)
+    assert sum(1 for x in c.calls if x["json_schema"]) == 1
+    fsm_calls = [x for x in c.calls if x["grammar"] and x["grammar"].startswith('root ::= "machine')]
+    assert len(fsm_calls) == 2 and r.stats["calls"] == len(c.calls) == 5
+    assert fsm_calls[0]["messages"] == fsm_calls[1]["messages"]
+    assert fsm_calls[0]["grammar"] == fsm_calls[1]["grammar"]
+    assert fsm_calls[0]["seed"] != fsm_calls[1]["seed"]
+
+
+def test_pin_only_request_never_plans():
+    c = Fake([sample()] * 3)
+    r = nl.translate("LED on 25, button on 4", client=c)
+    assert not any(x["json_schema"] or "machine" in (x["grammar"] or "").split("\n", 1)[0]
+                   for x in c.calls)
+    assert r.stats["calls"] == 2

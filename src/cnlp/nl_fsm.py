@@ -206,11 +206,22 @@ def request_units(request: str) -> set[str]:
     return units
 
 
+_GRAMMARS: dict[str, str] = {}
+
+
+def _fsm_grammar(machines: list[dict], numbers: set[int] | None, units: set[str] | None) -> str:
+    key = json.dumps([machines, sorted(numbers or ()), sorted(units or ())], sort_keys=True)
+    if key not in _GRAMMARS:
+        if len(_GRAMMARS) > 64:
+            _GRAMMARS.clear()
+        _GRAMMARS[key] = gbnf.fsm_grammar(machines, numbers, units)
+    return _GRAMMARS[key]
+
+
 def write(client, messages: list[dict], machines: list[dict], seed: int,
           numbers: set[int] | None = None, units: set[str] | None = None) -> str:
-    return client.complete(messages, grammar=gbnf.fsm_grammar(machines, numbers, units),
-                           temperature=0.7,
-                           max_tokens=1200, seed=seed)
+    return client.complete(messages, grammar=_fsm_grammar(machines, numbers, units),
+                           temperature=0.7, max_tokens=1200, seed=seed)
 
 
 _DURATION = re.compile(

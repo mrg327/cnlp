@@ -22,7 +22,7 @@ from pathlib import Path
 
 import yaml
 
-from cnlp import cnl, fsm, nl, rules
+from cnlp import cnl, fsm, llm, nl, rules
 
 CORPUS = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "nl" / "requests.yaml"
 
@@ -65,25 +65,32 @@ def main() -> int:
     entries = yaml.safe_load(CORPUS.read_text())
     if a.category:
         entries = [e for e in entries if e["category"] == a.category]
-    rows, by_cat = [], defaultdict(lambda: [0, 0, 0, 0])  # pass, total, parsed, agreed
+    rows, by_cat = [], defaultdict(lambda: [0, 0, 0, 0, 0.0, 0])  # pass, total, parsed, agreed, seconds, calls
     t0 = time.time()
     for e in entries:
         t = time.time()
-        r = nl.translate(e["request"], n=a.n)
+        try:
+            r = nl.translate(e["request"], n=a.n)
+        except llm.LlmError as err:  # a server hiccup fails this request, not the whole run
+            r = nl.TranslateResult(request=e["request"], questions=[str(err)])
+            r.stats = {"calls": 0, "seconds": round(time.time() - t, 2)}
         ok, why = score(e, r)
         c = by_cat[e["category"]]
         c[0] += ok
         c[1] += 1
         c[2] += r.ok
         c[3] += r.agreed
+        c[4] += r.stats.get("seconds", 0)
+        c[5] += r.stats.get("calls", 0)
         rows.append({"id": e["id"], "category": e["category"], "pass": ok, "why": why,
                      "agreed": r.agreed, "parsed": r.ok, "parse_failures": r.parse_failures,
-                     "questions": r.questions, "spec": r.spec_text, "seconds": round(time.time() - t, 1)})
+                     "questions": r.questions, "spec": r.spec_text, "seconds": round(time.time() - t, 1),
+                     "calls": r.stats.get("calls", 0)})
         print(f"{e['id']:<14} {'PASS' if ok else 'FAIL'} {why}", file=sys.stderr)
     Path(a.out).write_text(json.dumps(rows, indent=2) + "\n")
-    print(f"\n{'category':<16}{'pass':>8}{'parsed':>8}{'agreed':>8}")
-    for cat, (p, n, parsed, agreed) in sorted(by_cat.items()):
-        print(f"{cat:<16}{p:>4}/{n:<3}{parsed:>5}/{n:<3}{agreed:>4}/{n}")
+    print(f"\n{'category':<16}{'pass':>8}{'parsed':>8}{'agreed':>8}{'sec/req':>9}{'calls/req':>10}")
+    for cat, (p, n, parsed, agreed, secs, calls) in sorted(by_cat.items()):
+        print(f"{cat:<16}{p:>4}/{n:<3}{parsed:>5}/{n:<3}{agreed:>4}/{n:<3}{secs / n:>8.1f}{calls / n:>10.1f}")
     total = sum(v[0] for v in by_cat.values())
     print(f"{'total':<16}{total:>4}/{len(entries)}   in {time.time() - t0:.0f} s")
     return 0

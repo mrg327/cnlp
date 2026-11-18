@@ -8,8 +8,10 @@ plain-English question for the person.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -113,6 +115,7 @@ class TranslateResult:
     samples: list[str] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)  # parse errors if no sample parsed
     manifest: Manifest | None = field(default=None, repr=False)
+    stats: dict[str, Any] = field(default_factory=dict)  # {"calls": model calls, "seconds": wall}
 
     @property
     def ok(self) -> bool:
@@ -487,10 +490,15 @@ def _stage2(client, plan: list[dict], request: str, seed: int) -> tuple[str, lis
     return nl_fsm.finish(_strip_end(raw), request), messages, raw
 
 
+@functools.lru_cache(maxsize=64)
+def _grammar(allowed: frozenset[int] | None, fsm: bool) -> str:
+    return gbnf.grammar(set(allowed) if allowed else None, fsm=fsm)
+
+
 def _one_sample(client, messages: list[dict], seed: int, board: str, request: str = "",
                 allowed: set[int] | None = None, plan: list[dict] | None = None):
     """Return (raw_text, manifest|None, errors, assumptions, full_text)."""
-    grammar = gbnf.grammar(allowed, fsm=plan is None)
+    grammar = _grammar(frozenset(allowed) if allowed else None, plan is None)
     raw = client.complete(messages, grammar=grammar, temperature=0.7,
                           max_tokens=1500, seed=seed)
     text, norm_notes = _prep(raw, request)
@@ -599,7 +607,27 @@ def _canonicalize_roles(good: list, request: str) -> list:
     return out
 
 
+class _Counting:
+    """Client proxy that counts model calls."""
+
+    def __init__(self, client):
+        self._client = client
+        self.calls = 0
+
+    def complete(self, *args, **kwargs):
+        self.calls += 1
+        return self._client.complete(*args, **kwargs)
+
+
 def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOARD) -> TranslateResult:
+    t0 = time.monotonic()
+    counter = _Counting(client)
+    res = _translate(request, n=n, client=counter, board=board)
+    res.stats = {"calls": counter.calls, "seconds": round(time.monotonic() - t0, 2)}
+    return res
+
+
+def _translate(request: str, *, n: int, client, board: str) -> TranslateResult:
     allowed = gpio_numbers(request) or None
     plan = None
     if nl_fsm.looks_stateful(request):
@@ -619,6 +647,11 @@ def translate(request: str, *, n: int = 3, client=llm, board: str = DEFAULT_BOAR
             last_errors = errors
         else:
             good.append((text, m, notes, full))
+        # Early stop: the first two samples parsed and agree, so a third could only repeat them.
+        if i == 1 and n > 2 and len(good) == 2:
+            a, b = _canonicalize_roles(good, request)
+            if a[1] == b[1]:
+                break
     if not good:
         res.errors = last_errors
         res.spec_text = res.samples[0] if res.samples else ""

@@ -41,6 +41,7 @@ def complete(
         "top_p": 0.8,
         "top_k": 20,
         "max_tokens": max_tokens,
+        "cache_prompt": True,  # llama.cpp: reuse the KV cache of an identical prompt prefix
         "chat_template_kwargs": {"enable_thinking": False},
     }
     if grammar:
