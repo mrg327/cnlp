@@ -1,5 +1,6 @@
 # The user's review record for hand-owned rule data. cnlp only READS this file; it never
-# marks a rule reviewed. Edit by hand, or tell your agent your decision and have it edit.
+# marks a rule reviewed. Edit by hand, or ask Claude to record it at a check-in (the model
+# in Pi is blocked from editing this file).
 # status: unreviewed | reviewed | changes-requested   (by / date / note are free text)
 reviews:
   C1: {status: unreviewed, by: "", date: "", note: ""}

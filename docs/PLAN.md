@@ -232,3 +232,24 @@ canonicalized before voting; each retry is paired with a checker.
 Eval (verified independently): 61/61 pass; agreement 26/61 -> 43/61
 (state machines 2/10 -> 5/10). Gap: the language has no time-based
 transition ("after 20 s go to ..."); timeouts are modeled as event counts.
+
+## Current state (v0.2.0, 2026-11-17): stable for daily use
+
+The tool is in a state meant to be used as-is for a while; new work should be
+driven by real use. Verified at this point:
+
+- 558 tests pass (local ~40 s); ruff clean; CI green on GitHub.
+- Pi 1.5.2 with the user's full extension set: 7 scenarios x 3 runs, 21/21
+  correct, rule IDs quoted 20/21 (`scripts/pi_scenarios.py --repeat 3`).
+- `cnlp ask`: 53/54, all answers grounded. `cnlp spec`: 61/61 in ~180 s.
+- On the synth (copy): audit clean except GPIO 2 strapping warnings; all key
+  parameters match; RT1-RT7 clean; 0/17 requirements evidenced (phase 4 of 11).
+
+Open items for the user: review the rule tables (`cnlp rules --sheet`, incl.
+C17); confirm cnlp-chosen criteria (R4 +/-2%, R3 6.66 ms, R1 1.6 ms); decide
+whether RT7 should be a warning until phase 4 is done and whether the scan task
+will be named `scan_task`; requirements without a verification test (F1,
+F3-F7, F11, R2).
+
+Note: commit f8db065 says the suite dropped to ~15 s; it dropped from ~80 s to
+~40 s (the grammar test went from ~40 s to under 1 s).

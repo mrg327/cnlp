@@ -6,11 +6,32 @@ Turns a plain-English request into ESP32 C firmware and checks it against
 deterministic gates. Models propose; deterministic tools and user approval
 gates decide.
 
-**Status:** MVP. The deterministic path works end to end on a WROOM-32:
-controlled English → manifest → pin rules → generated C → build → gates →
-flash → register readback. No model is in the loop yet (see docs/PLAN.md).
+**Status:** a check-first tool for an existing ESP32 project. It reads your
+code and spec and reports problems; it never writes your code. It checks the
+pin plan against chip and module rules, your C against the plan, real-time
+rules (RT1-RT7), key parameters (sample rate, task priorities, I2C address and
+clock, encoder/I2C pins), and requirement evidence. A local Qwen model in Pi
+calls it as read-only tools; the checks themselves use no model. The older
+generation path (below) still works for a greenfield project: controlled
+English to manifest to pin rules to generated C to build, gates, flash and
+register readback.
 
-## Try it
+Commands, all run from the project directory (they default to `.`):
+
+- `cnlp doctor`: check the install, config, ESP-IDF, model server and Pi setup.
+- `cnlp status`: build phase, audit, real-time and evidence summary.
+- `cnlp audit`: code vs pin plan, lint, real-time rules, key parameters.
+- `cnlp try '<pin line>'`: what-if check of a pin change; changes nothing.
+- `cnlp verify-plan [REQ]`: verification steps for a requirement.
+- `cnlp evidence` / `cnlp evidence add REQ ...`: evidence matrix; record a result.
+- `cnlp measure`: read the bench scope over SCPI; `--record` stores evidence.
+- `cnlp rules [--sheet]`: every rule, with review status and a printable sheet.
+- `cnlp spec`, `cnlp ask`: use the local model (spec drafts; questions).
+- Generation path: `translate`, `check-pins`, `gen`, `gate`, `flash`, `readback`.
+
+Daily use is in [docs/USING.md](docs/USING.md).
+
+## Try it (generation path, example project)
 
 ```bash
 uv sync
@@ -36,11 +57,14 @@ ln -sfn ~/projects/cnlp/pi/skills/cnlp ~/.pi/agent/skills/cnlp
 ```
 
 In a project covered by a cnlp config, Pi gets read-only tools
-(`cnlp_status`, `cnlp_audit`, `cnlp_evidence`, `cnlp_try`, `cnlp_ask`), and
-commands that record approvals or measurements are blocked for the model.
-`scripts/pi_scenarios.py <project>` re-checks the integration on temp copies.
+(`cnlp_status`, `cnlp_audit`, `cnlp_evidence`, `cnlp_try`, `cnlp_verify_plan`,
+`cnlp_rules`, `cnlp_ask`) and a `/cnlp <command>` slash command that shows
+output without the model (`--share` also gives it to the model). Commands that
+record approvals or measurements, flash, or edit cnlp's records are blocked for
+the model. Run `cnlp doctor` to check the setup. `scripts/pi_scenarios.py
+<project>` re-checks the integration on temp copies.
 
-## How it works
+## How the generation path works
 
 1. The user describes the device in plain English.
 2. A local model (Qwen3.6-35B-A3B) rewrites the request as **controlled
@@ -73,13 +97,11 @@ the spec, not to claim it is "correct".
   the verify-first list. Diagrams appear as placeholders here; they live in
   the shared design doc.
 - [docs/PLAN.md](docs/PLAN.md): the working plan, broken into ordered steps.
-- [docs/USING.md](docs/USING.md): daily use with Pi: what to run, what it means, what the model can't do.
+- [docs/USING.md](docs/USING.md): daily use with Pi and cnlp: what to run, what it means, what the model can't do.
 - [docs/IDEAS.md](docs/IDEAS.md): ideas logged for later, not planned.
 
-## Before building
+## Before you rely on it
 
-1. Review and sign off the draft rule tables (chip rules C1–C16, WROOM
-   rules W1–W4) in `docs/design.md`.
-2. Run the phase 0 "Verify first" spikes.
-3. Build phase 1, the engine core with no models, against the known-bad
-   test cases.
+Review and sign off the draft rules (`cnlp rules --sheet` prints a review
+sheet; record decisions in `src/cnlp/rules/review.yaml`). The full tables are
+in `docs/design.md`.

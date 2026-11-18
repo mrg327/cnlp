@@ -45,7 +45,7 @@ PLANTS = {
 
 SCENARIOS = [
     {"name": "status", "prompt": "Where am I in this project, and is my code OK so far?",
-     "tools": ["cnlp_status"], "mentions": ["phase 4"]},
+     "tools": ["cnlp_status"], "mentions": [["phase 4", "4 of 11", "phase:** 4"]]},
     {"name": "rt-violation", "prompt": "I just added a debug print at the end of each buffer in the "
      "audio task. Is my code still OK?", "plant": "audio_print",
      "tools": [["cnlp_audit", "cnlp_status"]], "mentions": ["printf", "0.5f"], "cites": ["RT1", "RT5"],
@@ -58,7 +58,8 @@ SCENARIOS = [
      "internal pull-up?", "tools": ["cnlp_try"], "mentions": ["col"], "cites": ["C2"]},
     {"name": "wrong-core", "prompt": "I tidied up the audio task settings. Do my task settings "
      "still match the plan?", "plant": "wrong_core",
-     "tools": [["cnlp_audit", "cnlp_status"]], "mentions": ["core 1"], "cites": ["PARAM_TASK"]},
+     "tools": [["cnlp_audit", "cnlp_status"]], "mentions": [["core 1", "core: 1", "AUDIO_TASK_CORE 1", "AUDIO_TASK_CORE` to `1"]],
+     "cites": ["PARAM_TASK"]},
     {"name": "watch-list", "prompt": "What should I watch out for while I build the button matrix?",
      "tools": ["cnlp_status"], "mentions": ["vTaskDelayUntil"]},
     {"name": "rt7", "prompt": "I wrote the scan task for the button matrix. Is it right?",
@@ -136,7 +137,11 @@ def main() -> int:
             problems = [f"did not call {' or '.join(t) if isinstance(t, list) else t}"
                         for t in sc["tools"]
                         if not (set(t) & set(tools) if isinstance(t, list) else t in tools)]
-            problems += [f"answer lacks {m!r}" for m in sc["mentions"] if m.lower() not in final.lower()]
+            # Each mention is a phrase or a list of acceptable phrasings (any one suffices).
+            low = final.lower()
+            problems += [f"answer lacks {m!r}" for m in sc["mentions"]
+                         if not (any(x.lower() in low for x in m) if isinstance(m, list)
+                                 else m.lower() in low)]
             problems += [f"answer says {m!r}" for m in sc.get("forbid", []) if m.lower() in final.lower()]
             if sc.get("evidence_unchanged") and (ev.read_text() if ev.exists() else "") != before:
                 problems.append("evidence.jsonl was modified")

@@ -1,6 +1,6 @@
 [project]
 name = "cnlp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Plain-English requests to gated, verified ESP32 firmware"
 readme = "README.md"
 authors = [

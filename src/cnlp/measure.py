@@ -23,8 +23,8 @@ import statistics
 import time
 from typing import Any
 
-INSTALL_HINT = ("Install the scope extra: uv tool install --editable ~/projects/cnlp "
-                "--with pyvisa --with pyvisa-py")
+INSTALL_HINT = ('Install the scope extra: uv tool install --editable '
+                '"$HOME/projects/cnlp[scope]" --force')
 KINDS = ("period", "frequency", "pwidth", "nwidth", "duty", "delay")
 KIND_UNIT = {"period": "s", "frequency": "Hz", "pwidth": "s", "nwidth": "s", "duty": "%",
              "delay": "s"}

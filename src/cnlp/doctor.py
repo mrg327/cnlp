@@ -234,7 +234,7 @@ def check_extras(p: Probes) -> list[dict]:
     if p.has_module("pyvisa"):
         return [_c("pyvisa (scope)", "ok", "importable")]
     return [_c("pyvisa (scope)", "skip", "not installed; only `cnlp measure` needs it",
-               "uv sync --extra scope")]
+               'uv tool install --editable "$HOME/projects/cnlp[scope]" --force')]
 
 
 def check_serial(p: Probes) -> list[dict]:
